@@ -1,0 +1,15 @@
+{
+  "version": 2,
+  "dgSpecHash": "Ts0POkRpLfc=",
+  "success": true,
+  "projectFilePath": "C:\\Users\\m1ndst0rm\\Desktop\\patching_ya_music_v2\\YaLauncher\\YaLauncher.csproj",
+  "expectedPackageFiles": [
+    "C:\\Users\\m1ndst0rm\\.nuget\\packages\\figgle\\0.6.5\\figgle.0.6.5.nupkg.sha512",
+    "C:\\Users\\m1ndst0rm\\.nuget\\packages\\figgle.fonts\\0.6.5\\figgle.fonts.0.6.5.nupkg.sha512",
+    "C:\\Users\\m1ndst0rm\\.nuget\\packages\\figgle.generator\\0.6.5\\figgle.generator.0.6.5.nupkg.sha512",
+    "C:\\Users\\m1ndst0rm\\.nuget\\packages\\spectre.console\\0.50.0\\spectre.console.0.50.0.nupkg.sha512",
+    "C:\\Users\\m1ndst0rm\\.nuget\\packages\\system.memory\\4.6.3\\system.memory.4.6.3.nupkg.sha512",
+    "C:\\Users\\m1ndst0rm\\.nuget\\packages\\yamldotnet\\16.3.0\\yamldotnet.16.3.0.nupkg.sha512"
+  ],
+  "logs": []
+}
