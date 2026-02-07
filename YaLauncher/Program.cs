@@ -14,7 +14,7 @@ namespace YaLauncher;
 [SupportedOSPlatform("windows")]
 internal static class Program
 {
-    private const string LauncherVersion = "1.1.3";
+    private const string LauncherVersion = "1.1.4";
     private static readonly string WorkDir = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "YaMusicLauncher",

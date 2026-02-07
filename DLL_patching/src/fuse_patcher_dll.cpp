@@ -13,7 +13,7 @@ using bytes = std::vector<std::uint8_t>;
 
 namespace detail {
 
-struct Sec { DWORD va, vsize, raw, rsize; };
+struct Sec { DWORD va, raw, rsize, characteristics; };
 struct PE  { bool x64{}; std::vector<Sec> secs; };
 
 static bytes read_all(const std::filesystem::path& p) {
@@ -32,9 +32,14 @@ static PE parse_pe(const bytes& img) {
     auto dos = reinterpret_cast<const IMAGE_DOS_HEADER*>(img.data());
     if (dos->e_magic != IMAGE_DOS_SIGNATURE) throw std::runtime_error("bad MZ");
 
-    auto ntAny = img.data() + dos->e_lfanew;
-    if (img.size() < (size_t)dos->e_lfanew + sizeof(DWORD) + sizeof(IMAGE_FILE_HEADER))
+    if (dos->e_lfanew < 0)
+        throw std::runtime_error("bad e_lfanew (negative)");
+
+    auto lfanew = static_cast<size_t>(dos->e_lfanew);
+    if (lfanew + sizeof(DWORD) + sizeof(IMAGE_FILE_HEADER) > img.size())
         throw std::runtime_error("bad e_lfanew");
+
+    auto ntAny = img.data() + lfanew;
     if (*reinterpret_cast<const DWORD*>(ntAny) != IMAGE_NT_SIGNATURE)
         throw std::runtime_error("bad PE sig");
 
@@ -43,27 +48,25 @@ static PE parse_pe(const bytes& img) {
 
     PE pe{}; pe.x64 = is64;
 
-    if (is64) {
-        auto nt = reinterpret_cast<const IMAGE_NT_HEADERS64*>(ntAny);
+    auto collect_sections = [&](auto nt) {
         auto sec = IMAGE_FIRST_SECTION(nt);
-        for (unsigned i=0; i<nt->FileHeader.NumberOfSections; ++i, ++sec) {
-            Sec s{ sec->VirtualAddress,
-                   std::max(sec->Misc.VirtualSize, sec->SizeOfRawData),
-                   sec->PointerToRawData,
-                   sec->SizeOfRawData };
-            pe.secs.push_back(s);
+        auto nSec = nt->FileHeader.NumberOfSections;
+        auto secEnd = reinterpret_cast<const std::uint8_t*>(sec + nSec);
+        if (secEnd > img.data() + img.size())
+            throw std::runtime_error("section headers out of bounds");
+        for (unsigned i = 0; i < nSec; ++i, ++sec) {
+            pe.secs.push_back({ sec->VirtualAddress,
+                                sec->PointerToRawData,
+                                sec->SizeOfRawData,
+                                sec->Characteristics });
         }
-    } else {
-        auto nt = reinterpret_cast<const IMAGE_NT_HEADERS32*>(ntAny);
-        auto sec = IMAGE_FIRST_SECTION(nt);
-        for (unsigned i=0; i<nt->FileHeader.NumberOfSections; ++i, ++sec) {
-            Sec s{ sec->VirtualAddress,
-                   std::max(sec->Misc.VirtualSize, sec->SizeOfRawData),
-                   sec->PointerToRawData,
-                   sec->SizeOfRawData };
-            pe.secs.push_back(s);
-        }
-    }
+    };
+
+    if (is64)
+        collect_sections(reinterpret_cast<const IMAGE_NT_HEADERS64*>(ntAny));
+    else
+        collect_sections(reinterpret_cast<const IMAGE_NT_HEADERS32*>(ntAny));
+
     return pe;
 }
 
@@ -90,6 +93,8 @@ static std::vector<Hit> scan_inline_fuse_bools(const PE& pe, const bytes& img) {
     std::vector<Hit> hits;
 
     for (const auto& s : pe.secs) {
+        if (!(s.characteristics & IMAGE_SCN_MEM_EXECUTE)) continue;
+
         size_t start = s.raw, end = s.raw + s.rsize;
         if (end > img.size()) continue;
 
@@ -114,6 +119,16 @@ static std::vector<Hit> scan_inline_fuse_bools(const PE& pe, const bytes& img) {
         }
     }
     return hits;
+}
+
+static std::wstring wide_from_narrow(const char* str) {
+    if (!str || !*str) return {};
+    int len = static_cast<int>(std::strlen(str));
+    int need = MultiByteToWideChar(CP_ACP, 0, str, len, nullptr, 0);
+    if (need <= 0) return std::wstring(str, str + len); // fallback
+    std::wstring ws(need, L'\0');
+    MultiByteToWideChar(CP_ACP, 0, str, len, ws.data(), need);
+    return ws;
 }
 
 static void copy_err(wchar_t* buf, int cap, const std::wstring& msg) {
@@ -184,7 +199,7 @@ extern "C" ASFUSE_API int WINAPI DisableAsarIntegrityFuse(
         copy_err(errBuf, errBufChars, L"I/O error");
         return ASFUSE_E_IO;
     } catch (const std::runtime_error& e) {
-        std::wstring wmsg(e.what(), e.what() + std::strlen(e.what()));
+        std::wstring wmsg = wide_from_narrow(e.what());
         if (wmsg.find(L"PE") != std::wstring::npos) {
             copy_err(errBuf, errBufChars, L"PE parse error");
             return ASFUSE_E_PE;
