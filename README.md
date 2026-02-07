@@ -111,7 +111,10 @@ dotnet nuget add source "https://nuget.pkg.github.com/mindst0rm/index.json" `
 - `YaMusicLauncher.iss` - Inno Setup script.
 
 ### `scripts/`
-- `build-release.ps1` - release publish + сборка установщика.
+- `build-release.ps1` - release publish + сборка установщика + (опционально) публикация GitHub Release.
+
+### `.github/`
+- `release-notes-template.md` - единый шаблон красивого текста для GitHub Release.
 
 ## 🛠️ Сборка из исходников
 
@@ -137,6 +140,12 @@ dotnet publish YaLauncher/YaLauncher.csproj -c Release -r win-x64 --self-contain
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\build-release.ps1 -Version 1.1.5
+```
+
+Полная релизная сборка + автоматическая публикация GitHub Release по шаблону:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\build-release.ps1 -Version 1.1.5 -PublishGitHubRelease
 ```
 
 Только publish (без installer):
