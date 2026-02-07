@@ -59,8 +59,17 @@ jobs:
       - name: Publish to GitHub Packages (NuGet)
         shell: pwsh
         run: |
-          dotnet nuget push "artifacts/nuget/*.nupkg" `
-            --source "https://nuget.pkg.github.com/mindst0rm/index.json" `
-            --api-key "${{ secrets.GITHUB_TOKEN }}" `
-            --skip-duplicate
+          $packages = Get-ChildItem "artifacts/nuget" -Filter "*.nupkg" -File |
+            Where-Object { $_.Name -notlike "*.symbols.nupkg" }
+
+          if (-not $packages) {
+            throw "NuGet packages were not found in artifacts/nuget"
+          }
+
+          foreach ($pkg in $packages) {
+            dotnet nuget push $pkg.FullName `
+              --source "https://nuget.pkg.github.com/mindst0rm/index.json" `
+              --api-key "${{ secrets.GITHUB_TOKEN }}" `
+              --skip-duplicate
+          }
 
