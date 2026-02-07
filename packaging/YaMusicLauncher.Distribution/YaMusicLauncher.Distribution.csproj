@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <NoBuild>true</NoBuild>
+    <IsPackable>true</IsPackable>
+    <IncludeBuildOutput>false</IncludeBuildOutput>
+
+    <PackageId>YaMusicLauncher.Distribution</PackageId>
+    <Title>YaMusic Launcher Distribution</Title>
+    <Description>Windows x64 distribution package for YaMusic Launcher.</Description>
+    <Authors>m1ndst0rm</Authors>
+    <PackageTags>yandex-music;launcher;windows;dotnet</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageLicenseExpression>NOASSERTION</PackageLicenseExpression>
+    <RepositoryUrl>https://github.com/mindst0rm/yamusic-launcher</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+    <None Include="..\..\artifacts\publish\win-x64\**\*.*" Pack="true" PackagePath="tools/win-x64/" />
+  </ItemGroup>
+</Project>
+
