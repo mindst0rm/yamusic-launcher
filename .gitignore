@@ -1,4 +1,19 @@
-﻿DLL_patching/.idea
-YaLauncher/.idea
-YaLauncher/bin
-YaLauncher/obj
+# IDE
+.idea/
+.vs/
+
+# .NET build outputs
+**/bin/
+**/obj/
+
+# local dotnet CLI home used for sandbox/builds
+.dotnet-home/
+
+# native/CMake build outputs
+DLL_patching/out/
+DLL_patching/build/
+DLL_patching/cmake-build-*/
+
+# release artifacts
+artifacts/
+installer/output/

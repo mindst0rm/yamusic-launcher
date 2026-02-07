@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
     <PropertyGroup>
         <OutputType>Exe</OutputType>
         <TargetFramework>net8.0</TargetFramework>
@@ -9,7 +9,6 @@
         <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     </PropertyGroup>
 
-    <!-- single-file для Release -->
     <PropertyGroup Condition="'$(Configuration)'=='Release'">
         <SelfContained>true</SelfContained>
         <PublishSingleFile>true</PublishSingleFile>
@@ -19,60 +18,65 @@
         <DebugType>none</DebugType>
         <DebugSymbols>false</DebugSymbols>
         <PublishReadyToRunEmitSymbols>false</PublishReadyToRunEmitSymbols>
-        <!-- на всякий случай, чтобы нативные библиотеки корректно извлекались -->
         <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
     </PropertyGroup>
 
-    <!-- где лежит наша нативная DLL -->
     <PropertyGroup>
-        <AsarFuseNativePath>..\DLL_patching\cmake-build-release\AsarFusePatcher.dll</AsarFuseNativePath>
-        <AsarFuseNativeDir>$([System.IO.Path]::GetDirectoryName('$(AsarFuseNativePath)'))</AsarFuseNativeDir>
+        <NativeProjectDir>..\DLL_patching</NativeProjectDir>
+        <NativeBuildDir>..\DLL_patching\out\build\x64-Release</NativeBuildDir>
+        <NativeDllCandidateA>$(NativeBuildDir)\Release\AsarFusePatcher.dll</NativeDllCandidateA>
+        <NativeDllCandidateB>$(NativeBuildDir)\AsarFusePatcher.dll</NativeDllCandidateB>
+        <ResolvedAsarFuseNativePath></ResolvedAsarFuseNativePath>
+        <ResolvedAsarFuseNativeDir></ResolvedAsarFuseNativeDir>
     </PropertyGroup>
 
-    <!-- Копируем AsarFusePatcher.dll -->
-    <Target Name="CopyAsarFuseOnBuild" AfterTargets="Build">
-        <ItemGroup>
-            <_AsarFuse Include="$(AsarFuseNativePath)" Condition="Exists('$(AsarFuseNativePath)')" />
-        </ItemGroup>
-        <Error Condition="'@(_AsarFuse)'==''" Text="AsarFusePatcher.dll не найден по пути '$(AsarFuseNativePath)'." />
-        <Copy SourceFiles="@(_AsarFuse)" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
+    <Target Name="BuildNativeAsarFuse" BeforeTargets="Build;Publish">
+        <Exec Command="cmake -S &quot;$(NativeProjectDir)&quot; -B &quot;$(NativeBuildDir)&quot; -DCMAKE_BUILD_TYPE=Release" />
+        <Exec Command="cmake --build &quot;$(NativeBuildDir)&quot; --config Release --target AsarFusePatcher" />
     </Target>
 
-    <Target Name="CopyAsarFuseOnPublish" AfterTargets="Publish">
-        <ItemGroup>
-            <_AsarFusePub Include="$(AsarFuseNativePath)" Condition="Exists('$(AsarFuseNativePath)')" />
-        </ItemGroup>
-        <Copy SourceFiles="@(_AsarFusePub)" DestinationFolder="$(PublishDir)" SkipUnchangedFiles="true" />
+    <Target Name="ResolveAsarFusePath" BeforeTargets="CopyAsarFuseOnBuild;CopyAsarFuseOnPublish;CopyMinGwDepsOnBuild;CopyMinGwDepsOnPublish">
+        <PropertyGroup>
+            <ResolvedAsarFuseNativePath Condition="Exists('$(NativeDllCandidateA)')">$(NativeDllCandidateA)</ResolvedAsarFuseNativePath>
+            <ResolvedAsarFuseNativePath Condition="'$(ResolvedAsarFuseNativePath)'=='' and Exists('$(NativeDllCandidateB)')">$(NativeDllCandidateB)</ResolvedAsarFuseNativePath>
+            <ResolvedAsarFuseNativeDir Condition="'$(ResolvedAsarFuseNativePath)'!=''">$([System.IO.Path]::GetDirectoryName('$(ResolvedAsarFuseNativePath)'))</ResolvedAsarFuseNativeDir>
+        </PropertyGroup>
+        <Error Condition="'$(ResolvedAsarFuseNativePath)'==''"
+               Text="AsarFusePatcher.dll не найден после сборки. Проверены: '$(NativeDllCandidateA)' и '$(NativeDllCandidateB)'." />
     </Target>
 
-    <Target Name="CopyMinGwDepsOnBuild" AfterTargets="Build">
-        <ItemGroup>
-            <_Deps Include="$(AsarFuseNativeDir)\libstdc++-6.dll" Condition="Exists('$(AsarFuseNativeDir)\libstdc++-6.dll')" />
-            <_Deps Include="$(AsarFuseNativeDir)\libgcc_s_seh-1.dll" Condition="Exists('$(AsarFuseNativeDir)\libgcc_s_seh-1.dll')" />
-            <_Deps Include="$(AsarFuseNativeDir)\libwinpthread-1.dll" Condition="Exists('$(AsarFuseNativeDir)\libwinpthread-1.dll')" />
-        </ItemGroup>
+    <Target Name="CopyAsarFuseOnBuild" AfterTargets="Build" DependsOnTargets="ResolveAsarFusePath">
+        <Copy SourceFiles="$(ResolvedAsarFuseNativePath)" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
+    </Target>
 
-        <!-- копируем, если хоть что-то нашлось -->
+    <Target Name="CopyAsarFuseOnPublish" AfterTargets="Publish" DependsOnTargets="ResolveAsarFusePath">
+        <Copy SourceFiles="$(ResolvedAsarFuseNativePath)" DestinationFolder="$(PublishDir)" SkipUnchangedFiles="true" />
+    </Target>
+
+    <Target Name="CopyMinGwDepsOnBuild" AfterTargets="Build" DependsOnTargets="ResolveAsarFusePath">
+        <ItemGroup>
+            <_Deps Include="$(ResolvedAsarFuseNativeDir)\libstdc++-6.dll" Condition="Exists('$(ResolvedAsarFuseNativeDir)\libstdc++-6.dll')" />
+            <_Deps Include="$(ResolvedAsarFuseNativeDir)\libgcc_s_seh-1.dll" Condition="Exists('$(ResolvedAsarFuseNativeDir)\libgcc_s_seh-1.dll')" />
+            <_Deps Include="$(ResolvedAsarFuseNativeDir)\libwinpthread-1.dll" Condition="Exists('$(ResolvedAsarFuseNativeDir)\libwinpthread-1.dll')" />
+        </ItemGroup>
         <Copy SourceFiles="@(_Deps)" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" Condition="'@(_Deps)'!=''" />
     </Target>
 
-    <Target Name="CopyMinGwDepsOnPublish" AfterTargets="Publish">
+    <Target Name="CopyMinGwDepsOnPublish" AfterTargets="Publish" DependsOnTargets="ResolveAsarFusePath">
         <ItemGroup>
-            <_DepsPub Include="$(MinGwBinDir)\libstdc++-6.dll" Condition="Exists('$(MinGwBinDir)\libstdc++-6.dll')" />
-            <_DepsPub Include="$(MinGwBinDir)\libgcc_s_seh-1.dll" Condition="Exists('$(MinGwBinDir)\libgcc_s_seh-1.dll')" />
-            <_DepsPub Include="$(MinGwBinDir)\libwinpthread-1.dll" Condition="Exists('$(MinGwBinDir)\libwinpthread-1.dll')" />
-
-            <_DepsPub Include="$(AsarFuseNativeDir)\libstdc++-6.dll" Condition="Exists('$(AsarFuseNativeDir)\libstdc++-6.dll')" />
-            <_DepsPub Include="$(AsarFuseNativeDir)\libgcc_s_seh-1.dll" Condition="Exists('$(AsarFuseNativeDir)\libgcc_s_seh-1.dll')" />
-            <_DepsPub Include="$(AsarFuseNativeDir)\libwinpthread-1.dll" Condition="Exists('$(AsarFuseNativeDir)\libwinpthread-1.dll')" />
+            <_DepsPub Include="$(ResolvedAsarFuseNativeDir)\libstdc++-6.dll" Condition="Exists('$(ResolvedAsarFuseNativeDir)\libstdc++-6.dll')" />
+            <_DepsPub Include="$(ResolvedAsarFuseNativeDir)\libgcc_s_seh-1.dll" Condition="Exists('$(ResolvedAsarFuseNativeDir)\libgcc_s_seh-1.dll')" />
+            <_DepsPub Include="$(ResolvedAsarFuseNativeDir)\libwinpthread-1.dll" Condition="Exists('$(ResolvedAsarFuseNativeDir)\libwinpthread-1.dll')" />
         </ItemGroup>
-
         <Copy SourceFiles="@(_DepsPub)" DestinationFolder="$(PublishDir)" SkipUnchangedFiles="true" Condition="'@(_DepsPub)'!=''" />
     </Target>
 
-    <!-- 7zip -->
     <ItemGroup>
-        <None Include="7zip\**\*.*" CopyToOutputDirectory="PreserveNewest" />
+        <None Include="7zip\**\*.*">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+            <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+            <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
+        </None>
     </ItemGroup>
 
     <ItemGroup>

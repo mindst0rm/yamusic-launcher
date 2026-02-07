@@ -7,6 +7,7 @@
 #include <fstream>
 #include <stdexcept>
 #include <cstring>
+#include <algorithm>
 
 using bytes = std::vector<std::uint8_t>;
 
