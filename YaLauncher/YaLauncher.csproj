@@ -7,6 +7,7 @@
         <Platforms>x64</Platforms>
         <UseAppHost>true</UseAppHost>
         <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+        <ApplicationIcon>assets\launcher.ico</ApplicationIcon>
     </PropertyGroup>
 
     <PropertyGroup Condition="'$(Configuration)'=='Release'">
@@ -73,6 +74,11 @@
 
     <ItemGroup>
         <None Include="7zip\**\*.*">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+            <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+            <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
+        </None>
+        <None Include="assets\launcher.ico">
             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
             <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
             <ExcludeFromSingleFile>true</ExcludeFromSingleFile>

@@ -3,7 +3,7 @@
 [![Release](https://img.shields.io/github/v/release/mindst0rm/yamusic-launcher?display_name=tag)](https://github.com/mindst0rm/yamusic-launcher/releases)
 [![Windows](https://img.shields.io/badge/platform-Windows%20x64-0078D6)](https://github.com/mindst0rm/yamusic-launcher)
 [![.NET](https://img.shields.io/badge/.NET-8.0-512BD4)](https://dotnet.microsoft.com/)
-[![Build](https://img.shields.io/badge/build-Release%20v1.1.3-success)](https://github.com/mindst0rm/yamusic-launcher/releases/tag/v1.1.3)
+[![Build](https://img.shields.io/badge/build-Release%20v1.1.5-success)](https://github.com/mindst0rm/yamusic-launcher/releases/tag/v1.1.5)
 [![Packages](https://img.shields.io/badge/Packages-GitHub%20Packages-181717?logo=github)](https://github.com/mindst0rm?tab=packages)
 
 Консольный лаунчер для Windows, который автоматизирует установку и запуск модифицированного клиента Яндекс Музыки.
@@ -73,7 +73,7 @@ Pipeline запуска и первичной установки:
 
 - Основной канал распространения: `GitHub Releases` (готовый Inno Setup installer).
 - Файл релиза: `YaMusicLauncher-Setup-<version>.exe`.
-- Актуальный релиз: `v1.1.3`.
+- Актуальный релиз: `v1.1.5`.
 - Раздел `Packages` в GitHub заполняется публикацией NuGet-пакета `YaMusicLauncher.Distribution` через workflow.
 - Источник пакетов: `https://nuget.pkg.github.com/mindst0rm/index.json`.
 - Пакет содержит готовый publish-вывод лаунчера (`tools/win-x64`), включая `YaLauncher.exe`, `AsarFusePatcher.dll` и `7zip`.
@@ -136,7 +136,7 @@ dotnet publish YaLauncher/YaLauncher.csproj -c Release -r win-x64 --self-contain
 Полная релизная сборка (publish + installer):
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\build-release.ps1 -Version 1.1.3
+powershell -ExecutionPolicy Bypass -File .\scripts\build-release.ps1 -Version 1.1.5
 ```
 
 Только publish (без installer):

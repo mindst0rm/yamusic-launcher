@@ -9,7 +9,11 @@ internal sealed class ShortcutService
     private const string MusicShortcutFileName = "Yandex Music Mod.lnk";
     private const string LauncherShortcutFileName = "YaMusic Launcher.lnk";
 
-    public ShortcutResult CreateOrUpdate(string launcherExePath, string musicArguments, string? musicIconPath = null)
+    public ShortcutResult CreateOrUpdate(
+        string launcherExePath,
+        string musicArguments,
+        string? musicIconPath = null,
+        string? launcherIconPath = null)
     {
         var desktopDir = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
         var startMenuDir = Environment.GetFolderPath(Environment.SpecialFolder.Programs);
@@ -42,7 +46,7 @@ internal sealed class ShortcutService
             string.Empty,
             launcherDir,
             "Открыть меню YaMusic Launcher",
-            launcherExePath);
+            launcherIconPath ?? launcherExePath);
 
         CreateShortcut(
             launcherStartMenuShortcut,
@@ -50,7 +54,7 @@ internal sealed class ShortcutService
             string.Empty,
             launcherDir,
             "Открыть меню YaMusic Launcher",
-            launcherExePath);
+            launcherIconPath ?? launcherExePath);
 
         return new ShortcutResult(
             musicDesktopShortcut,

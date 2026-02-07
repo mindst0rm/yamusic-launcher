@@ -3,7 +3,7 @@
 #define MyAppPublisher "m1ndst0rm"
 
 #ifndef AppVersion
-  #define AppVersion "1.1.4"
+  #define AppVersion "1.1.5"
 #endif
 
 #ifndef SourceDir
@@ -26,6 +26,8 @@ WizardStyle=modern
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 PrivilegesRequired=admin
+SetupIconFile=..\YaLauncher\assets\launcher.ico
+UninstallDisplayIcon={app}\{#MyAppExeName}
 
 [Languages]
 Name: "russian"; MessagesFile: "compiler:Languages\Russian.isl"
@@ -38,8 +40,8 @@ Name: "desktopicon"; Description: "Создать ярлык на рабочем
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
 
 [Icons]
-Name: "{group}\YaMusic Launcher"; Filename: "{app}\{#MyAppExeName}"
-Name: "{autodesktop}\YaMusic Launcher"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
+Name: "{group}\YaMusic Launcher"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\assets\launcher.ico"
+Name: "{autodesktop}\YaMusic Launcher"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\assets\launcher.ico"; Tasks: desktopicon
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "Запустить YaMusic Launcher"; Flags: nowait postinstall skipifsilent

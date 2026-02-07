@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$Version = "1.1.3",
+    [string]$Version = "1.1.5",
     [string]$Configuration = "Release",
     [switch]$SkipInstaller
 )
@@ -13,17 +13,33 @@ $publishDir = Join-Path $repoRoot "artifacts\publish\win-x64"
 $installerScript = Join-Path $repoRoot "installer\YaMusicLauncher.iss"
 $installerOutDir = Join-Path $repoRoot "installer\output"
 
-Write-Host "==> Publishing YaLauncher ($Configuration, win-x64)..." -ForegroundColor Cyan
-if (Test-Path $publishDir) {
-    Remove-Item $publishDir -Recurse -Force
+function Invoke-Checked {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$FilePath,
+        [string[]]$Arguments
+    )
+
+    & $FilePath @Arguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "Command failed with exit code ${LASTEXITCODE}: $FilePath $($Arguments -join ' ')"
+    }
 }
 
-dotnet publish $projectPath `
-    -c $Configuration `
-    -r win-x64 `
-    --self-contained true `
-    -o $publishDir `
-    /p:Version=$Version
+Write-Host "==> Publishing YaLauncher ($Configuration, win-x64)..." -ForegroundColor Cyan
+if (-not (Test-Path $publishDir)) {
+    New-Item -ItemType Directory -Path $publishDir | Out-Null
+}
+
+Invoke-Checked -FilePath "dotnet" -Arguments @(
+    "publish",
+    $projectPath,
+    "-c", $Configuration,
+    "-r", "win-x64",
+    "--self-contained", "true",
+    "-o", $publishDir,
+    "/p:Version=$Version"
+)
 
 Write-Host "Publish output: $publishDir" -ForegroundColor Green
 
@@ -62,7 +78,11 @@ if (-not $iscc) {
 }
 
 Write-Host "==> Compiling installer via Inno Setup..." -ForegroundColor Cyan
-& $iscc "/DAppVersion=$Version" "/DSourceDir=$publishDir" $installerScript
+Invoke-Checked -FilePath $iscc -Arguments @(
+    "/DAppVersion=$Version",
+    "/DSourceDir=$publishDir",
+    $installerScript
+)
 
 if (-not (Test-Path $installerOutDir)) {
     throw "Installer output directory not found after compilation: $installerOutDir"

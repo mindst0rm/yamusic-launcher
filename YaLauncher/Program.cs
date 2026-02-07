@@ -14,7 +14,7 @@ namespace YaLauncher;
 [SupportedOSPlatform("windows")]
 internal static class Program
 {
-    private const string LauncherVersion = "1.1.4";
+    private const string LauncherVersion = "1.1.5";
     private static readonly string WorkDir = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "YaMusicLauncher",
@@ -731,9 +731,20 @@ internal static class Program
             log?.Invoke($"Шаг проверки обновлений пропущен ({reason}).", "grey");
         }
 
-        log?.Invoke("Применяем DLL-патч клиента...", "cyan");
-        var patchedCount = ApplyPatchOrThrow(exePath);
-        log?.Invoke($"Патч применен. Изменено участков: {patchedCount}", "green");
+        var patchedCount = 0;
+        if (modResult?.Updated == true)
+        {
+            log?.Invoke("Обновление найдено, применяем DLL-патч клиента...", "cyan");
+            patchedCount = ApplyPatchOrThrow(exePath);
+            log?.Invoke($"Патч применен. Изменено участков: {patchedCount}", "green");
+        }
+        else
+        {
+            var reason = modResult is { Updated: false }
+                ? "обновлений мода нет"
+                : "обновление не выполнялось";
+            log?.Invoke($"Шаг патчинга пропущен ({reason}).", "grey");
+        }
 
         if (launchClient)
         {
@@ -858,8 +869,12 @@ internal static class Program
                            ?? throw new InvalidOperationException("Не удалось определить путь текущего EXE.");
         var arguments = $"{ArgBootstrap} {ArgLaunchClient}";
         var service = new ShortcutService();
-        var exe = iconPath ?? TryFindInstalledExe(cfg.InstallDir!);
-        return service.CreateOrUpdate(launcherPath, arguments, exe);
+        var musicIcon = iconPath ?? TryFindInstalledExe(cfg.InstallDir!);
+        var launcherIcon = Path.Combine(AppContext.BaseDirectory, "assets", "launcher.ico");
+        if (!File.Exists(launcherIcon))
+            launcherIcon = launcherPath;
+
+        return service.CreateOrUpdate(launcherPath, arguments, musicIcon, launcherIcon);
     }
 
     private static string BuildStageTaskTitle(string stagePrefix, string title) =>
