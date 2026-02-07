@@ -1,108 +1,140 @@
 # YaMusic Launcher
 
-Консольный лаунчер для установки и запуска модифицированного клиента Яндекс Музыки на Windows.
+[![Release](https://img.shields.io/github/v/release/mindst0rm/yamusic-launcher?display_name=tag)](https://github.com/mindst0rm/yamusic-launcher/releases)
+[![Windows](https://img.shields.io/badge/platform-Windows%20x64-0078D6)](https://github.com/mindst0rm/yamusic-launcher)
+[![.NET](https://img.shields.io/badge/.NET-8.0-512BD4)](https://dotnet.microsoft.com/)
+[![Build](https://img.shields.io/badge/build-Release%20v1.1.3-success)](https://github.com/mindst0rm/yamusic-launcher/releases/tag/v1.1.3)
 
-Лаунчер автоматизирует полный цикл:
-1. скачивание клиента Я.Музыки;
-2. скачивание и установка `app.asar` из GitHub-релиза мода;
-3. патчинг EXE через `AsarFusePatcher.dll` (отключение ASAR integrity fuse);
-4. создание ярлыков.
+Консольный лаунчер для Windows, который автоматизирует установку и запуск модифицированного клиента Яндекс Музыки.
 
-## Возможности
+## Что делает лаунчер
+
+Pipeline запуска и первичной установки:
+1. Скачивает и устанавливает клиент Я.Музыки.
+2. Скачивает мод (`app.asar`) из GitHub Releases.
+3. Применяет патч через `AsarFusePatcher.dll`.
+4. Создает ярлыки на музыку и на сам лаунчер.
+
+При запуске через ярлык `Yandex Music Mod` выполняется bootstrap-последовательность:
+- проверка актуальной версии мода на GitHub;
+- обновление (если нужно);
+- патчинг;
+- запуск клиента;
+- вывод шапки и лога действий в консоли.
+
+## Ключевые возможности
 
 - Первичная установка в один сценарий (`1/4 -> 4/4`).
-- Выбор каталога установки клиента.
-- Обновление мода (`app.asar`) с версионированием (`app.version`) и бэкапами.
-- Патчинг клиента через нативную DLL (`DLL_patching`).
-- Запуск Я.Музыки через bootstrap-режим лаунчера с авто-проверкой обновлений.
+- Настройка каталога установки клиента.
+- Автообновление мода перед запуском.
+- Бэкапы `app.asar` с восстановлением и ручной очисткой.
+- Автоочистка бэкапов по лимиту размера (настраивается в настройках, по умолчанию `300 MB`).
+- Разделение меню на категории: основные действия, установка/обновление, утилиты, настройки.
 - Создание ярлыков:
-  - `Yandex Music Mod.lnk` (запуск музыки через лаунчер),
-  - `YaMusic Launcher.lnk` (запуск меню лаунчера).
-- Категоризированное меню и ASCII-анимации при старте интерфейса.
+  - `Yandex Music Mod.lnk` - запуск через bootstrap;
+  - `YaMusic Launcher.lnk` - запуск главного меню.
 
-## Архитектура
+## Быстрый старт
+
+1. Открой `Releases`:  
+   `https://github.com/mindst0rm/yamusic-launcher/releases`
+2. Скачай `YaMusicLauncher-Setup-<version>.exe` (рекомендуется).
+3. Установи лаунчер.
+4. Запусти `YaMusic Launcher` и выбери `Первичная установка`.
+
+## Установка и запуск готового EXE
+
+### Вариант 1 (рекомендуется): через установщик Inno Setup
+
+1. Скачай из `Releases` файл `YaMusicLauncher-Setup-<version>.exe`.
+2. Запусти установщик и следуй шагам мастера.
+3. После установки используй ярлыки:
+   - `YaMusic Launcher` - открыть меню лаунчера;
+   - `Yandex Music Mod` - запуск клиента через bootstrap (проверка обновления -> патчинг -> запуск).
+4. При первом запуске из меню выполни `Первичная установка`.
+
+### Вариант 2: portable EXE (без установки)
+
+1. Возьми `YaLauncher.exe` из publish-артефактов (`artifacts/publish/win-x64`) или собери проект по инструкции ниже.
+2. Убедись, что рядом находятся необходимые файлы:
+   - `AsarFusePatcher.dll`
+   - папка `7zip/`
+3. Запусти `YaLauncher.exe`.
+4. В меню выбери каталог установки клиента и выполни `Первичная установка`.
+
+### Обновление до новой версии лаунчера
+
+1. Скачай новый `Setup` из `Releases`.
+2. Установи поверх текущей версии.
+3. Конфиг и настройки сохраняются в `%AppData%\YaMusicLauncher\config.json`.
+
+## Packages и дистрибуция
+
+- Основной канал распространения: `GitHub Releases` (готовый Inno Setup installer).
+- Файл релиза: `YaMusicLauncher-Setup-<version>.exe`.
+- Актуальный релиз: `v1.1.3`.
+
+Если нужен отдельный формат поставки (например, GHCR package), его можно добавить в CI как отдельный канал публикации.
+
+## Архитектура проекта
 
 ### `YaLauncher/` (.NET 8)
-- `Program.cs` - интерактивное меню, пайплайн установки, bootstrap-режим.
-- `Services/YandexMusicDownloader.cs` - загрузка актуального клиента из `latest.yml`.
-- `Services/ModClientUpdater.cs` - логика обновления/бэкапа/восстановления `app.asar`.
-- `Services/ShortcutService.cs` - создание ярлыков через `WScript.Shell`.
-- `Native/FuseLib.cs` - P/Invoke-обертка для `AsarFusePatcher.dll`.
+- `Program.cs` - UI, bootstrap, пайплайн установки/обновления/патчинга.
+- `Storage/AppConfigStore.cs` - загрузка/сохранение конфигурации.
+- `Services/YandexMusicDownloader.cs` - загрузка клиента.
+- `Services/ModClientUpdater.cs` - обновление мода, бэкапы, changelog.
+- `Services/ShortcutService.cs` - создание ярлыков.
+- `Services/YandexProcessManager.cs` - остановка процессов клиента.
+- `Native/FuseLib.cs` - P/Invoke для `AsarFusePatcher.dll`.
 
 ### `DLL_patching/` (C++/CMake)
-- Нативная библиотека `AsarFusePatcher.dll`.
-- Экспорт `DisableAsarIntegrityFuse` для патчинга целевого EXE.
+- Нативный патчер `AsarFusePatcher.dll`.
+- Экспорт `DisableAsarIntegrityFuse`.
 
-## Сборка
+### `installer/`
+- `YaMusicLauncher.iss` - Inno Setup script.
 
-## Требования
+### `scripts/`
+- `build-release.ps1` - release publish + сборка установщика.
 
+## Сборка из исходников
+
+Требования:
 - Windows x64
 - .NET SDK 8.x
-- CMake + C++ toolchain (MSVC/MinGW)
-- 7-Zip (бинарники уже включены в `YaLauncher/7zip`)
+- CMake + C++ toolchain
+- Inno Setup 6 (для сборки инсталлятора)
 
-### Debug/обычная сборка
+Обычная сборка:
 
 ```powershell
 dotnet build YaLauncher/YaLauncher.sln
 ```
 
-### Release publish (self-contained)
+Релизная публикация:
 
 ```powershell
 dotnet publish YaLauncher/YaLauncher.csproj -c Release -r win-x64 --self-contained true
 ```
 
-`YaLauncher.csproj` автоматически:
-- собирает `AsarFusePatcher.dll` через CMake;
-- копирует DLL (и при наличии runtime-зависимости MinGW) в build/publish output.
-
-## Установщик (Setup.exe)
-
-В проекте добавлены:
-- Inno Setup script: `installer/YaMusicLauncher.iss`
-- release script: `scripts/build-release.ps1`
-
-Команда сборки релиза + установщика:
+Полная релизная сборка (publish + installer):
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\build-release.ps1 -Version 1.1.0
+powershell -ExecutionPolicy Bypass -File .\scripts\build-release.ps1 -Version 1.1.3
 ```
 
-Что делает скрипт:
-1. `dotnet publish` в `artifacts/publish/win-x64`;
-2. компиляция Inno Setup через `ISCC.exe`;
-3. генерация `Setup.exe` в `installer/output`.
-
-Если нужен только publish без инсталлятора:
+Только publish (без installer):
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\build-release.ps1 -SkipInstaller
 ```
 
-## Использование
+## Конфиги, логи, бэкапы
 
-Запуск лаунчера:
-
-```powershell
-dotnet run --project YaLauncher/YaLauncher.csproj
-```
-
-В меню доступны разделы:
-- `Основные действия`
-- `Установка и обновление`
-- `Полезные утилиты`
-- `Настройки`
-
-Рекомендуемый первый шаг: `Первичная установка`.
-
-## Примечания
-
-- Конфиг хранится в `%AppData%\YaMusicLauncher\config.json`.
-- Логи обновления мода: `<installDir>\resources\logs\ym_mod_manager.log`.
-- Бэкапы `app.asar`: `<installDir>\resources\backups_app`.
+- Конфиг: `%AppData%\YaMusicLauncher\config.json`
+- Лог мода: `<installDir>\resources\logs\ym_mod_manager.log`
+- Бэкапы: `<installDir>\resources\backups_app`
 
 ## Дисклеймер
 
-Проект не аффилирован с Яндексом и предоставляется как есть.
+Проект не аффилирован с Яндексом. Использование - на ваш риск.
