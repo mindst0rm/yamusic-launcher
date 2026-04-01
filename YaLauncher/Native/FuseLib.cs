@@ -1,6 +1,5 @@
 ﻿using System;
 using System.IO;
-using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Collections.Generic;
@@ -54,7 +53,6 @@ namespace YaLauncher.Native
 
             string baseDir = AppContext.BaseDirectory;
             string procDir = Path.GetDirectoryName(Environment.ProcessPath!) ?? baseDir;
-            string asmDir  = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location) ?? baseDir;
             string cwd     = Environment.CurrentDirectory;
 
             // Разрешим переопределить путь через переменную окружения (удобно для CI/portable)
@@ -79,7 +77,6 @@ namespace YaLauncher.Native
             {
                 candidates.Add(Path.Combine(baseDir, name));
                 candidates.Add(Path.Combine(procDir, name));
-                candidates.Add(Path.Combine(asmDir,  name));
                 candidates.Add(Path.Combine(cwd,     name));
 
                 // стандартная папка runtimes/<rid>/native
