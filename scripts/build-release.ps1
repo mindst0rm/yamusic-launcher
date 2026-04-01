@@ -189,8 +189,14 @@ $tempNotes = Join-Path $env:TEMP "yamusic-release-notes-$tag.md"
 Set-Content -Path $tempNotes -Value $notes -Encoding UTF8
 
 Write-Host "==> Publishing GitHub Release $tag..." -ForegroundColor Cyan
-& $gh release view $tag --repo $GitHubRepo *> $null
-$releaseExists = $LASTEXITCODE -eq 0
+$releaseExists = $false
+try {
+    & $gh release view $tag --repo $GitHubRepo --json url --jq .url 2>$null | Out-Null
+    $releaseExists = $LASTEXITCODE -eq 0
+}
+catch {
+    $releaseExists = $false
+}
 
 if ($releaseExists) {
     Invoke-Checked -FilePath $gh -Arguments @(
@@ -219,7 +225,13 @@ else {
     Invoke-Checked -FilePath $gh -Arguments $createArgs
 }
 
-$releaseUrl = & $gh release view $tag --repo $GitHubRepo --json url --jq .url 2>$null
+$releaseUrl = $null
+try {
+    $releaseUrl = & $gh release view $tag --repo $GitHubRepo --json url --jq .url 2>$null
+}
+catch {
+    $releaseUrl = $null
+}
 if ($releaseUrl) {
     Write-Host "Release ready: $releaseUrl" -ForegroundColor Green
 }

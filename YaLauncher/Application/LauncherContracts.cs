@@ -16,6 +16,34 @@ internal sealed record BootstrapResult(
     int PatchedCount,
     string? Warning);
 
+internal enum BootstrapReadinessStatus
+{
+    Ready,
+    InitialSetupRequired,
+    ClientMissingAfterSetup
+}
+
+internal sealed record BootstrapReadiness(BootstrapReadinessStatus Status);
+
+internal enum LauncherSelfUpdateStatus
+{
+    UpToDate,
+    UpdateStarted,
+    NoInstallerAsset,
+    Failed
+}
+
+internal sealed record LauncherSelfUpdateResult(
+    LauncherSelfUpdateStatus Status,
+    string CurrentVersion,
+    string? LatestVersion,
+    string? ReleaseUrl,
+    string? InstallerPath,
+    string? Message)
+{
+    public bool UpdateStarted => Status == LauncherSelfUpdateStatus.UpdateStarted;
+}
+
 internal interface ILauncherPrerequisites
 {
     void EnsureSevenZipAvailable();
@@ -70,4 +98,9 @@ internal interface IConfigPersistence
 internal interface IClientLauncher
 {
     void Launch(string exePath);
+}
+
+internal interface ILauncherSelfUpdateService
+{
+    Task<LauncherSelfUpdateResult> TrySelfUpdateAsync(string currentVersion, CancellationToken ct = default);
 }

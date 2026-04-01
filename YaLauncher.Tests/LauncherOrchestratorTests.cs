@@ -89,6 +89,39 @@ public sealed class LauncherOrchestratorTests
     }
 
     [Fact]
+    public void GetBootstrapReadiness_ReturnsMissingClientAfterSetup_WhenClientWasRemoved()
+    {
+        var calls = new List<string>();
+        var cfg = CreateConfig();
+        cfg.IsInitialSetupCompleted = true;
+        var orchestrator = CreateOrchestrator(calls, isInitialSetupDone: false);
+
+        var readiness = orchestrator.GetBootstrapReadiness(cfg);
+
+        Assert.Equal(BootstrapReadinessStatus.ClientMissingAfterSetup, readiness.Status);
+    }
+
+    [Fact]
+    public async Task TrySelfUpdateLauncherAsync_UsesInjectedUpdater()
+    {
+        var calls = new List<string>();
+        var orchestrator = CreateOrchestrator(
+            calls,
+            launcherUpdateResult: new LauncherSelfUpdateResult(
+                LauncherSelfUpdateStatus.UpdateStarted,
+                "1.1.6",
+                "1.1.7",
+                "https://github.com/mindst0rm/yamusic-launcher/releases/tag/v1.1.7",
+                "C:\\Temp\\YaMusicLauncher-Setup-1.1.7.exe",
+                "ok"));
+
+        var result = await orchestrator.TrySelfUpdateLauncherAsync();
+
+        Assert.True(result.UpdateStarted);
+        Assert.Contains("self-update:1.1.6", calls);
+    }
+
+    [Fact]
     public void PatchClientAndCreateShortcuts_UseInjectedDependencies()
     {
         var calls = new List<string>();
@@ -108,6 +141,7 @@ public sealed class LauncherOrchestratorTests
     private static AppConfig CreateConfig(string installDir = "C:\\Music") => new()
     {
         InstallDir = installDir,
+        AutoUpdateLauncher = true,
         AutoUpdateBeforeLaunch = true,
         GitHubOwner = "owner",
         GitHubRepo = "repo",
@@ -118,18 +152,29 @@ public sealed class LauncherOrchestratorTests
         List<string> calls,
         string clientInstallResult = "C:\\Music\\Yandex Music.exe",
         ModInstallResult? modResult = null,
-        int patchResult = 0)
+        int patchResult = 0,
+        bool isInitialSetupDone = true,
+        LauncherSelfUpdateResult? launcherUpdateResult = null)
     {
         return new LauncherOrchestrator(
             new FakePrerequisites(calls),
             new FakeProcessController(calls),
-            new FakeClientLocator(calls),
+            new FakeClientLocator(calls, isInitialSetupDone),
             new FakeClientInstallationService(calls, clientInstallResult),
             new FakeModInstallationService(calls, modResult ?? new ModInstallResult(false, "v1", "v1")),
             new FakePatchService(calls, patchResult),
             new FakeShortcutProvisioner(calls),
             new FakeConfigPersistence(calls),
-            new FakeClientLauncher(calls));
+            new FakeClientLauncher(calls),
+            new FakeLauncherSelfUpdateService(
+                calls,
+                launcherUpdateResult ?? new LauncherSelfUpdateResult(
+                    LauncherSelfUpdateStatus.UpToDate,
+                    "1.1.6",
+                    "1.1.6",
+                    null,
+                    null,
+                    null)));
     }
 
     private sealed class FakePrerequisites : ILauncherPrerequisites
@@ -158,8 +203,13 @@ public sealed class LauncherOrchestratorTests
     private sealed class FakeClientLocator : IInstalledClientLocator
     {
         private readonly List<string> _calls;
+        private readonly bool _isInitialSetupDone;
 
-        public FakeClientLocator(List<string> calls) => _calls = calls;
+        public FakeClientLocator(List<string> calls, bool isInitialSetupDone)
+        {
+            _calls = calls;
+            _isInitialSetupDone = isInitialSetupDone;
+        }
 
         public string FindInstalledExeOrThrow(string installDir)
         {
@@ -167,8 +217,8 @@ public sealed class LauncherOrchestratorTests
             return "C:\\Music\\Yandex Music.exe";
         }
 
-        public bool IsInitialSetupDone(string installDir) => true;
-        public string? TryFindInstalledExe(string installDir) => "C:\\Music\\Yandex Music.exe";
+        public bool IsInitialSetupDone(string installDir) => _isInitialSetupDone;
+        public string? TryFindInstalledExe(string installDir) => _isInitialSetupDone ? "C:\\Music\\Yandex Music.exe" : null;
     }
 
     private sealed class FakeClientInstallationService : IClientInstallationService
@@ -255,7 +305,22 @@ public sealed class LauncherOrchestratorTests
 
         public void Launch(string exePath) => _calls.Add($"launch:{exePath}");
     }
+
+    private sealed class FakeLauncherSelfUpdateService : ILauncherSelfUpdateService
+    {
+        private readonly List<string> _calls;
+        private readonly LauncherSelfUpdateResult _result;
+
+        public FakeLauncherSelfUpdateService(List<string> calls, LauncherSelfUpdateResult result)
+        {
+            _calls = calls;
+            _result = result;
+        }
+
+        public Task<LauncherSelfUpdateResult> TrySelfUpdateAsync(string currentVersion, CancellationToken ct = default)
+        {
+            _calls.Add($"self-update:{currentVersion}");
+            return Task.FromResult(_result);
+        }
+    }
 }
-
-
-

@@ -10,6 +10,7 @@ internal sealed class AppConfig
     internal const string LegacyGitHubRepo = "YandexMusicModClient";
 
     public string? InstallDir { get; set; }
+    public bool AutoUpdateLauncher { get; set; } = true;
     public bool AutoUpdateBeforeLaunch { get; set; } = true;
     public string GitHubOwner { get; set; } = DefaultGitHubOwner;
     public string GitHubRepo { get; set; } = DefaultGitHubRepo;

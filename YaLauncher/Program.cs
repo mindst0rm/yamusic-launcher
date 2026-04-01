@@ -92,9 +92,24 @@ internal static class Program
         }
     }
 
-    private static async Task<int> RunInteractiveMenuAsync(AppConfig cfg)
+    private static async Task<int> RunInteractiveMenuAsync(
+        AppConfig cfg,
+        string? startupTitle = null,
+        string? startupBody = null,
+        bool skipLauncherSelfUpdate = false)
     {
         var orchestrator = CreateOrchestrator();
+
+        if (!skipLauncherSelfUpdate && await TryHandleLauncherSelfUpdateAsync(cfg, orchestrator))
+            return 0;
+
+        if (!string.IsNullOrWhiteSpace(startupBody))
+        {
+            RedrawHeader();
+            ShowInfoPanel(startupTitle ?? "Информация", startupBody);
+            PauseAndContinue();
+            IntroAnimationShown = true;
+        }
 
         while (true)
         {
@@ -369,13 +384,21 @@ internal static class Program
 
         RedrawHeader();
 
-        if (!orchestrator.IsInitialSetupDone(cfg.InstallDir!))
+        var readiness = orchestrator.GetBootstrapReadiness(cfg);
+        if (readiness.Status != BootstrapReadinessStatus.Ready)
         {
-            ShowInfoPanel(
-                "Запуск через ярлык недоступен",
-                "Первичная установка не выполнена.\n" +
-                "Запустите лаунчер в интерактивном режиме и выполните шаги установки.");
-            return 2;
+            var body = readiness.Status == BootstrapReadinessStatus.ClientMissingAfterSetup
+                ? "Клиент Яндекс Музыки больше не найден в каталоге установки.\n" +
+                  "Похоже, он был удален вручную или очищен вместе с папкой установки.\n\n" +
+                  "Нужно заново выполнить чистую установку через пункт 'Первичная установка' " +
+                  "или 'Переустановить клиент Я.Музыки'."
+                : "Первичная установка не выполнена.\n" +
+                  "Запустите лаунчер в интерактивном режиме и выполните шаги установки.";
+
+            ShowInfoPanel("Запуск через ярлык недоступен", body);
+            PauseAndContinue();
+            IntroAnimationShown = true;
+            return await RunInteractiveMenuAsync(cfg, skipLauncherSelfUpdate: true);
         }
 
         if (!EnsureElevatedIfRequired(cfg.InstallDir!, rawArgs, flags))
@@ -402,6 +425,9 @@ internal static class Program
                 : "Режим без автозапуска клиента",
             "grey");
         AnsiConsole.WriteLine();
+
+        if (await TryHandleLauncherSelfUpdateAsync(cfg, orchestrator, WriteBootstrapLog))
+            return 0;
 
         var result = await orchestrator.ExecuteBootstrapAsync(cfg, launchClient, noUpdate, WriteBootstrapLog);
         if (!string.IsNullOrWhiteSpace(result.Warning))
@@ -771,13 +797,15 @@ internal static class Program
         {
             RedrawHeader();
 
-            var state = cfg.AutoUpdateBeforeLaunch ? "включено" : "выключено";
+            var launcherUpdateState = cfg.AutoUpdateLauncher ? "включено" : "выключено";
+            var modUpdateState = cfg.AutoUpdateBeforeLaunch ? "включено" : "выключено";
             var setupDone = CreateOrchestrator().IsInitialSetupDone(cfg.InstallDir!);
             var backupsLimitText = cfg.BackupAutoCleanupLimitMb <= 0
                 ? "выключена"
                 : $"{cfg.BackupAutoCleanupLimitMb} МБ";
             AnsiConsole.MarkupLine($"[grey]Каталог установки:[/] {Markup.Escape(cfg.InstallDir ?? "-")}");
-            AnsiConsole.MarkupLine($"[grey]Auto-update перед запуском:[/] {state}");
+            AnsiConsole.MarkupLine($"[grey]Auto-update лаунчера:[/] {launcherUpdateState}");
+            AnsiConsole.MarkupLine($"[grey]Auto-update мода перед запуском:[/] {modUpdateState}");
             AnsiConsole.MarkupLine($"[grey]Первичная установка:[/] {(setupDone ? "выполнена" : "не выполнена")}");
             AnsiConsole.MarkupLine($"[grey]Авто-очистка бэкапов:[/] {backupsLimitText}");
             AnsiConsole.WriteLine();
@@ -792,8 +820,9 @@ internal static class Program
                     {
                         "[1] Изменить путь установки",
                         "[2] Сбросить путь к стандартному",
-                        "[3] Переключить auto-update перед запуском",
-                        "[4] Лимит авто-очистки бэкапов (МБ)",
+                        "[3] Переключить auto-update лаунчера",
+                        "[4] Переключить auto-update мода перед запуском",
+                        "[5] Лимит авто-очистки бэкапов (МБ)",
                         "[0] Назад"
                     }));
 
@@ -827,14 +856,21 @@ internal static class Program
                 continue;
             }
 
-            if (choice == "[3] Переключить auto-update перед запуском")
+            if (choice == "[3] Переключить auto-update лаунчера")
+            {
+                cfg.AutoUpdateLauncher = !cfg.AutoUpdateLauncher;
+                AppConfigStore.Save(cfg);
+                continue;
+            }
+
+            if (choice == "[4] Переключить auto-update мода перед запуском")
             {
                 cfg.AutoUpdateBeforeLaunch = !cfg.AutoUpdateBeforeLaunch;
                 AppConfigStore.Save(cfg);
                 continue;
             }
 
-            if (choice == "[4] Лимит авто-очистки бэкапов (МБ)")
+            if (choice == "[5] Лимит авто-очистки бэкапов (МБ)")
             {
                 var value = AnsiConsole.Ask<int>(
                     "Введите лимит в МБ ([grey]0 — отключить авто-очистку[/]):",
@@ -942,6 +978,55 @@ internal static class Program
         AnsiConsole.MarkupLine($"[{color}]{Markup.Escape(line)}[/]");
     }
 
+    private static async Task<bool> TryHandleLauncherSelfUpdateAsync(
+        AppConfig cfg,
+        LauncherOrchestrator orchestrator,
+        Action<string, string>? log = null)
+    {
+        if (!cfg.AutoUpdateLauncher)
+        {
+            log?.Invoke("Автообновление лаунчера отключено в настройках.", "grey");
+            return false;
+        }
+
+        log?.Invoke("Проверяем обновление самого лаунчера...", "cyan");
+        var result = await orchestrator.TrySelfUpdateLauncherAsync();
+
+        switch (result.Status)
+        {
+            case LauncherSelfUpdateStatus.UpToDate:
+                log?.Invoke($"Лаунчер уже актуален ({result.CurrentVersion}).", "green");
+                return false;
+
+            case LauncherSelfUpdateStatus.UpdateStarted:
+                if (log is not null)
+                {
+                    log($"Найдена новая версия лаунчера: {result.CurrentVersion} -> {result.LatestVersion}", "green");
+                    log("Запущен установщик обновления. После завершения установки повторите запуск ярлыка.", "yellow");
+                }
+                else
+                {
+                    RedrawHeader();
+                    ShowInfoPanel(
+                        "Обновление лаунчера",
+                        $"Текущая версия: {result.CurrentVersion}\n" +
+                        $"Доступна версия: {result.LatestVersion}\n" +
+                        "Запущен установщик новой версии.\n" +
+                        "После завершения установки откройте лаунчер снова.");
+                }
+
+                return true;
+
+            case LauncherSelfUpdateStatus.NoInstallerAsset:
+            case LauncherSelfUpdateStatus.Failed:
+                log?.Invoke(result.Message ?? "Проверка обновления лаунчера завершилась с предупреждением.", "yellow");
+                return false;
+
+            default:
+                return false;
+        }
+    }
+
     private static async Task ShowIntroAnimationAsync()
     {
         Console.Clear();
@@ -971,7 +1056,8 @@ internal static class Program
         var setupDone = CreateOrchestrator().IsInitialSetupDone(cfg.InstallDir!);
         var statusColor = setupDone ? "green" : "yellow";
         var statusText = setupDone ? "готово" : "требуется";
-        var autoUpdate = cfg.AutoUpdateBeforeLaunch ? "вкл" : "выкл";
+        var launcherAutoUpdate = cfg.AutoUpdateLauncher ? "вкл" : "выкл";
+        var modAutoUpdate = cfg.AutoUpdateBeforeLaunch ? "вкл" : "выкл";
         var backupLimit = cfg.BackupAutoCleanupLimitMb <= 0
             ? "выкл"
             : $"{cfg.BackupAutoCleanupLimitMb} МБ";
@@ -979,7 +1065,8 @@ internal static class Program
         var body =
             $"[grey]Установка:[/] [white]{Markup.Escape(cfg.InstallDir ?? "-")}[/]\n" +
             $"[grey]Первичная настройка:[/] [{statusColor}]{statusText}[/]\n" +
-            $"[grey]Auto-update:[/] [white]{autoUpdate}[/]\n" +
+            $"[grey]Auto-update лаунчера:[/] [white]{launcherAutoUpdate}[/]\n" +
+            $"[grey]Auto-update мода:[/] [white]{modAutoUpdate}[/]\n" +
             $"[grey]Лимит бэкапов:[/] [white]{backupLimit}[/]\n" +
             $"[grey]GitHub мод:[/] [white]{Markup.Escape(cfg.GitHubOwner)}/{Markup.Escape(cfg.GitHubRepo)}[/]";
 
@@ -1005,6 +1092,7 @@ internal static class Program
             new FusePatchService(),
             new ShortcutProvisioner(paths, locator),
             new AppConfigPersistence(),
-            new ClientLauncher());
+            new ClientLauncher(),
+            new LauncherSelfUpdater());
     }
 }

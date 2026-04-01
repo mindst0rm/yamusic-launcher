@@ -14,6 +14,7 @@ internal sealed class LauncherOrchestrator
     private readonly IShortcutProvisioner _shortcutProvisioner;
     private readonly IConfigPersistence _configPersistence;
     private readonly IClientLauncher _clientLauncher;
+    private readonly ILauncherSelfUpdateService _launcherSelfUpdateService;
 
     public LauncherOrchestrator(
         ILauncherPrerequisites prerequisites,
@@ -24,7 +25,8 @@ internal sealed class LauncherOrchestrator
         IPatchService patchService,
         IShortcutProvisioner shortcutProvisioner,
         IConfigPersistence configPersistence,
-        IClientLauncher clientLauncher)
+        IClientLauncher clientLauncher,
+        ILauncherSelfUpdateService launcherSelfUpdateService)
     {
         _prerequisites = prerequisites;
         _processController = processController;
@@ -35,6 +37,7 @@ internal sealed class LauncherOrchestrator
         _shortcutProvisioner = shortcutProvisioner;
         _configPersistence = configPersistence;
         _clientLauncher = clientLauncher;
+        _launcherSelfUpdateService = launcherSelfUpdateService;
     }
 
     public Task<string> InstallClientAsync(AppConfig cfg, int parallelDownloads, CancellationToken ct = default)
@@ -61,6 +64,19 @@ internal sealed class LauncherOrchestrator
 
     public bool IsInitialSetupDone(string installDir) =>
         _clientLocator.IsInitialSetupDone(installDir);
+
+    public BootstrapReadiness GetBootstrapReadiness(AppConfig cfg)
+    {
+        if (_clientLocator.IsInitialSetupDone(cfg.InstallDir!))
+            return new BootstrapReadiness(BootstrapReadinessStatus.Ready);
+
+        return cfg.IsInitialSetupCompleted
+            ? new BootstrapReadiness(BootstrapReadinessStatus.ClientMissingAfterSetup)
+            : new BootstrapReadiness(BootstrapReadinessStatus.InitialSetupRequired);
+    }
+
+    public Task<LauncherSelfUpdateResult> TrySelfUpdateLauncherAsync(CancellationToken ct = default) =>
+        _launcherSelfUpdateService.TrySelfUpdateAsync(AppVersionProvider.DisplayVersion, ct);
 
     public async Task<InitialSetupResult> ExecuteInitialSetupAsync(
         AppConfig cfg,
