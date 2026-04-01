@@ -75,8 +75,10 @@ internal sealed class LauncherOrchestrator
             : new BootstrapReadiness(BootstrapReadinessStatus.InitialSetupRequired);
     }
 
-    public Task<LauncherSelfUpdateResult> TrySelfUpdateLauncherAsync(CancellationToken ct = default) =>
-        _launcherSelfUpdateService.TrySelfUpdateAsync(AppVersionProvider.DisplayVersion, ct);
+    public Task<LauncherSelfUpdateResult> TrySelfUpdateLauncherAsync(
+        Action<string, string>? log = null,
+        CancellationToken ct = default) =>
+        _launcherSelfUpdateService.TrySelfUpdateAsync(AppVersionProvider.DisplayVersion, log, ct);
 
     public async Task<InitialSetupResult> ExecuteInitialSetupAsync(
         AppConfig cfg,

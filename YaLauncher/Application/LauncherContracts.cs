@@ -102,5 +102,8 @@ internal interface IClientLauncher
 
 internal interface ILauncherSelfUpdateService
 {
-    Task<LauncherSelfUpdateResult> TrySelfUpdateAsync(string currentVersion, CancellationToken ct = default);
+    Task<LauncherSelfUpdateResult> TrySelfUpdateAsync(
+        string currentVersion,
+        Action<string, string>? log = null,
+        CancellationToken ct = default);
 }

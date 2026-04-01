@@ -33,4 +33,16 @@ endif()
 # ---- MinGW: статическая линковка рантаймов libstdc++/libgcc ----
 if (MINGW)
     target_link_options(AsarFusePatcher PRIVATE -static-libstdc++ -static-libgcc)
+
+    get_filename_component(MINGW_BIN_DIR "${CMAKE_CXX_COMPILER}" DIRECTORY)
+    set(MINGW_WINPTHREAD_DLL "${MINGW_BIN_DIR}/libwinpthread-1.dll")
+
+    if (EXISTS "${MINGW_WINPTHREAD_DLL}")
+        add_custom_command(TARGET AsarFusePatcher POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${MINGW_WINPTHREAD_DLL}"
+                "$<TARGET_FILE_DIR:AsarFusePatcher>/libwinpthread-1.dll")
+    else()
+        message(WARNING "libwinpthread-1.dll was not found near ${CMAKE_CXX_COMPILER}. The launcher installer may miss a required MinGW runtime dependency.")
+    endif()
 endif()

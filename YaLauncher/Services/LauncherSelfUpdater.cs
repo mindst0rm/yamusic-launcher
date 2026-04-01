@@ -26,11 +26,18 @@ internal sealed class LauncherSelfUpdater : ILauncherSelfUpdateService
         _processStarter = processStarter ?? new ShellExternalProcessStarter();
     }
 
-    public async Task<LauncherSelfUpdateResult> TrySelfUpdateAsync(string currentVersion, CancellationToken ct = default)
+    public async Task<LauncherSelfUpdateResult> TrySelfUpdateAsync(
+        string currentVersion,
+        Action<string, string>? log = null,
+        CancellationToken ct = default)
     {
         try
         {
-            var release = await GetLatestReleaseAsync(ct);
+            log?.Invoke("Проверяем последний релиз лаунчера на GitHub...", "cyan");
+            using var releaseCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            releaseCts.CancelAfter(TimeSpan.FromSeconds(20));
+
+            var release = await GetLatestReleaseAsync(releaseCts.Token);
             if (release is null)
             {
                 return new LauncherSelfUpdateResult(
@@ -45,6 +52,7 @@ internal sealed class LauncherSelfUpdater : ILauncherSelfUpdateService
             var latestVersion = NormalizeVersion(release.TagName);
             if (!IsRemoteVersionNewer(currentVersion, latestVersion))
             {
+                log?.Invoke($"Лаунчер уже актуален: {currentVersion}", "green");
                 return new LauncherSelfUpdateResult(
                     LauncherSelfUpdateStatus.UpToDate,
                     currentVersion,
@@ -69,7 +77,15 @@ internal sealed class LauncherSelfUpdater : ILauncherSelfUpdateService
                     "В GitHub Release не найден Setup-файл лаунчера.");
             }
 
-            var installerPath = await DownloadInstallerAsync(asset, latestVersion, ct);
+            log?.Invoke($"Найдена новая версия лаунчера: {currentVersion} -> {latestVersion}", "green");
+            log?.Invoke($"Скачиваем установщик {asset.Name}...", "cyan");
+
+            using var downloadCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            downloadCts.CancelAfter(TimeSpan.FromMinutes(5));
+            var installerPath = await DownloadInstallerAsync(asset, latestVersion, downloadCts.Token);
+
+            log?.Invoke($"Установщик скачан: {installerPath}", "green");
+            log?.Invoke("Запускаем установщик обновления...", "cyan");
             _processStarter.Start(
                 installerPath,
                 "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CLOSEAPPLICATIONS /FORCECLOSEAPPLICATIONS");
@@ -81,6 +97,16 @@ internal sealed class LauncherSelfUpdater : ILauncherSelfUpdateService
                 release.HtmlUrl,
                 installerPath,
                 $"Запущен установщик новой версии лаунчера ({latestVersion}).");
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            return new LauncherSelfUpdateResult(
+                LauncherSelfUpdateStatus.Failed,
+                currentVersion,
+                null,
+                null,
+                null,
+                "Проверка или скачивание обновления лаунчера превысили лимит ожидания.");
         }
         catch (Win32Exception ex) when (ex.NativeErrorCode == 1223)
         {

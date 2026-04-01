@@ -100,7 +100,7 @@ internal static class Program
     {
         var orchestrator = CreateOrchestrator();
 
-        if (!skipLauncherSelfUpdate && await TryHandleLauncherSelfUpdateAsync(cfg, orchestrator))
+        if (!skipLauncherSelfUpdate && await TryHandleLauncherSelfUpdateAsync(cfg, orchestrator, interactiveMode: true))
             return 0;
 
         if (!string.IsNullOrWhiteSpace(startupBody))
@@ -965,8 +965,21 @@ internal static class Program
 
     private static void ShowUnhandledError(Exception ex)
     {
+        var details = new StringBuilder()
+            .AppendLine($"[red]{Markup.Escape(ex.Message)}[/]")
+            .Append($"[grey]{Markup.Escape(ex.GetType().Name)}[/]");
+
+        if (ex.InnerException is not null)
+        {
+            details
+                .AppendLine()
+                .AppendLine()
+                .AppendLine($"[yellow]Inner:[/] {Markup.Escape(ex.InnerException.Message)}")
+                .Append($"[grey]{Markup.Escape(ex.InnerException.GetType().Name)}[/]");
+        }
+
         var panel = new Panel(
-                $"[red]{Markup.Escape(ex.Message)}[/]\n[grey]{Markup.Escape(ex.GetType().Name)}[/]")
+                details.ToString())
             .Header("[bold red]Ошибка[/]")
             .Border(BoxBorder.Rounded);
         AnsiConsole.Write(panel);
@@ -981,7 +994,8 @@ internal static class Program
     private static async Task<bool> TryHandleLauncherSelfUpdateAsync(
         AppConfig cfg,
         LauncherOrchestrator orchestrator,
-        Action<string, string>? log = null)
+        Action<string, string>? log = null,
+        bool interactiveMode = false)
     {
         if (!cfg.AutoUpdateLauncher)
         {
@@ -989,20 +1003,27 @@ internal static class Program
             return false;
         }
 
-        log?.Invoke("Проверяем обновление самого лаунчера...", "cyan");
-        var result = await orchestrator.TrySelfUpdateLauncherAsync();
+        Action<string, string>? effectiveLog = log;
+        if (interactiveMode && effectiveLog is null)
+        {
+            RedrawHeader();
+            WriteBootstrapLog("YaMusic Launcher: проверка обновления самого лаунчера", "deepskyblue1");
+            WriteBootstrapLog($"Текущая версия лаунчера: {AppVersionProvider.DisplayVersion}", "grey");
+            AnsiConsole.WriteLine();
+            effectiveLog = WriteBootstrapLog;
+        }
+
+        var result = await orchestrator.TrySelfUpdateLauncherAsync(effectiveLog);
 
         switch (result.Status)
         {
             case LauncherSelfUpdateStatus.UpToDate:
-                log?.Invoke($"Лаунчер уже актуален ({result.CurrentVersion}).", "green");
                 return false;
 
             case LauncherSelfUpdateStatus.UpdateStarted:
-                if (log is not null)
+                if (effectiveLog is not null)
                 {
-                    log($"Найдена новая версия лаунчера: {result.CurrentVersion} -> {result.LatestVersion}", "green");
-                    log("Запущен установщик обновления. После завершения установки повторите запуск ярлыка.", "yellow");
+                    effectiveLog("Запущен установщик обновления. После завершения установки повторите запуск ярлыка.", "yellow");
                 }
                 else
                 {
@@ -1019,7 +1040,7 @@ internal static class Program
 
             case LauncherSelfUpdateStatus.NoInstallerAsset:
             case LauncherSelfUpdateStatus.Failed:
-                log?.Invoke(result.Message ?? "Проверка обновления лаунчера завершилась с предупреждением.", "yellow");
+                effectiveLog?.Invoke(result.Message ?? "Проверка обновления лаунчера завершилась с предупреждением.", "yellow");
                 return false;
 
             default:

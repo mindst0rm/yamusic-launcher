@@ -170,8 +170,8 @@ public sealed class LauncherOrchestratorTests
                 calls,
                 launcherUpdateResult ?? new LauncherSelfUpdateResult(
                     LauncherSelfUpdateStatus.UpToDate,
-                    "1.1.6",
-                    "1.1.6",
+                    "1.1.7",
+                    "1.1.7",
                     null,
                     null,
                     null)));
@@ -317,7 +317,10 @@ public sealed class LauncherOrchestratorTests
             _result = result;
         }
 
-        public Task<LauncherSelfUpdateResult> TrySelfUpdateAsync(string currentVersion, CancellationToken ct = default)
+        public Task<LauncherSelfUpdateResult> TrySelfUpdateAsync(
+            string currentVersion,
+            Action<string, string>? log = null,
+            CancellationToken ct = default)
         {
             _calls.Add($"self-update:{currentVersion}");
             return Task.FromResult(_result);
