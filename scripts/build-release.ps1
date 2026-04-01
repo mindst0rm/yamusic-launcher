@@ -28,7 +28,7 @@ if (-not (Test-Path $versionFilePath)) {
     throw "VERSION file not found: $versionFilePath"
 }
 
-$repoVersion = (Get-Content -Raw -Path $versionFilePath).Trim()
+$repoVersion = (Get-Content -Raw -Path $versionFilePath -Encoding UTF8).Trim()
 if ([string]::IsNullOrWhiteSpace($repoVersion)) {
     throw "VERSION file is empty: $versionFilePath"
 }
@@ -179,14 +179,15 @@ if (-not $commitLines -or $commitLines.Count -eq 0) {
 
 $commitHighlights = ($commitLines | Select-Object -First 10) -join "`r`n"
 
-$template = Get-Content -Raw -Path $releaseTemplatePath
+$template = Get-Content -Raw -Path $releaseTemplatePath -Encoding UTF8
 $notes = $template.Replace("{{TAG}}", $tag)
 $notes = $notes.Replace("{{COMMIT_HIGHLIGHTS}}", $commitHighlights)
 $notes = $notes.Replace("{{SETUP_FILE}}", $setupName)
 $notes = $notes.Replace("{{COMPARE_LINE}}", $compareLine)
 
 $tempNotes = Join-Path $env:TEMP "yamusic-release-notes-$tag.md"
-Set-Content -Path $tempNotes -Value $notes -Encoding UTF8
+$utf8Bom = New-Object System.Text.UTF8Encoding($true)
+[System.IO.File]::WriteAllText($tempNotes, $notes, $utf8Bom)
 
 Write-Host "==> Publishing GitHub Release $tag..." -ForegroundColor Cyan
 $releaseExists = $false
