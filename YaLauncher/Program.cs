@@ -233,19 +233,19 @@ internal static class Program
                 .WrapAround(true)
                 .AddChoices(new[]
                 {
-                    "[1] Основные действия",
-                    "[2] Установка и обновление",
-                    "[3] Полезные утилиты",
-                    "[4] Настройки",
-                    "[0] Выход"
+                    "1. Основные действия",
+                    "2. Установка и обновление",
+                    "3. Полезные утилиты",
+                    "4. Настройки",
+                    "0. Выход"
                 }));
 
         return selected switch
         {
-            "[1] Основные действия" => MenuSection.Core,
-            "[2] Установка и обновление" => MenuSection.InstallUpdate,
-            "[3] Полезные утилиты" => MenuSection.Utilities,
-            "[4] Настройки" => MenuSection.Settings,
+            "1. Основные действия" => MenuSection.Core,
+            "2. Установка и обновление" => MenuSection.InstallUpdate,
+            "3. Полезные утилиты" => MenuSection.Utilities,
+            "4. Настройки" => MenuSection.Settings,
             _ => MenuSection.Exit
         };
     }
@@ -254,33 +254,33 @@ internal static class Program
     {
         var hasInstalledClientInSelectedDir = orchestrator.IsInitialSetupDone(cfg.InstallDir!);
         var initialSetupChoice = hasInstalledClientInSelectedDir
-            ? "[grey][1] Первичная установка (уже выполнена)[/]"
-            : "[1] Первичная установка (1/4 клиент -> 2/4 мод -> 3/4 патч -> 4/4 ярлыки)";
+            ? "[grey]1. Первичная установка (уже выполнена)[/]"
+            : "1. Первичная установка (1/4 клиент -> 2/4 мод -> 3/4 патч -> 4/4 ярлыки)";
 
         var choices = section switch
         {
             MenuSection.Core => new[]
             {
                 initialSetupChoice,
-                "[2] Запустить Я.Музыку через лаунчер",
-                "[0] Назад"
+                "2. Запустить Я.Музыку через лаунчер",
+                "0. Назад"
             },
             MenuSection.InstallUpdate => new[]
             {
-                "[1] Переустановить клиент Я.Музыки",
-                "[2] Обновить мод (app.asar)",
-                "[3] Пропатчить установленный клиент",
-                "[4] Создать/обновить ярлыки",
-                "[0] Назад"
+                "1. Переустановить клиент Я.Музыки",
+                "2. Обновить мод (app.asar)",
+                "3. Пропатчить установленный клиент",
+                "4. Создать/обновить ярлыки",
+                "0. Назад"
             },
             MenuSection.Utilities => new[]
             {
-                "[1] Показать версии мода и changelog (GitHub)",
-                "[2] Восстановить мод из бэкапа",
-                "[3] Удалить бэкапы",
-                "[0] Назад"
+                "1. Показать версии мода и changelog (GitHub)",
+                "2. Восстановить мод из бэкапа",
+                "3. Удалить бэкапы",
+                "0. Назад"
             },
-            _ => ["[0] Назад"]
+            _ => ["0. Назад"]
         };
 
         var title = section switch
@@ -304,14 +304,14 @@ internal static class Program
             var x when x == initialSetupChoice => hasInstalledClientInSelectedDir
                 ? MenuAction.InitialSetupDisabled
                 : MenuAction.InitialSetup,
-            "[2] Запустить Я.Музыку через лаунчер" => MenuAction.LaunchViaLauncher,
-            "[1] Переустановить клиент Я.Музыки" => MenuAction.InstallClient,
-            "[2] Обновить мод (app.asar)" => MenuAction.UpdateMod,
-            "[3] Пропатчить установленный клиент" => MenuAction.PatchClient,
-            "[4] Создать/обновить ярлыки" => MenuAction.CreateShortcuts,
-            "[1] Показать версии мода и changelog (GitHub)" => MenuAction.ShowLatestModVersion,
-            "[2] Восстановить мод из бэкапа" => MenuAction.RestoreBackup,
-            "[3] Удалить бэкапы" => MenuAction.DeleteBackups,
+            "2. Запустить Я.Музыку через лаунчер" => MenuAction.LaunchViaLauncher,
+            "1. Переустановить клиент Я.Музыки" => MenuAction.InstallClient,
+            "2. Обновить мод (app.asar)" => MenuAction.UpdateMod,
+            "3. Пропатчить установленный клиент" => MenuAction.PatchClient,
+            "4. Создать/обновить ярлыки" => MenuAction.CreateShortcuts,
+            "1. Показать версии мода и changelog (GitHub)" => MenuAction.ShowLatestModVersion,
+            "2. Восстановить мод из бэкапа" => MenuAction.RestoreBackup,
+            "3. Удалить бэкапы" => MenuAction.DeleteBackups,
             _ => null
         };
     }
@@ -566,15 +566,15 @@ internal static class Program
                 .PageSize(8)
                 .AddChoices(new[]
                 {
-                    "[1] Удалить один бэкап",
-                    "[2] Очистить все бэкапы",
-                    "[0] Назад"
+                    "1. Удалить один бэкап",
+                    "2. Очистить все бэкапы",
+                    "0. Назад"
                 }));
 
-        if (mode == "[0] Назад")
+        if (mode == "0. Назад")
             return;
 
-        if (mode == "[2] Очистить все бэкапы")
+        if (mode == "2. Очистить все бэкапы")
         {
             if (!AnsiConsole.Confirm("Удалить [red]все[/] бэкапы?"))
                 return;
@@ -818,18 +818,18 @@ internal static class Program
                     .WrapAround(true)
                     .AddChoices(new[]
                     {
-                        "[1] Изменить путь установки",
-                        "[2] Сбросить путь к стандартному",
-                        "[3] Переключить auto-update лаунчера",
-                        "[4] Переключить auto-update мода перед запуском",
-                        "[5] Лимит авто-очистки бэкапов (МБ)",
-                        "[0] Назад"
+                        "1. Изменить путь установки",
+                        "2. Сбросить путь к стандартному",
+                        "3. Переключить auto-update лаунчера",
+                        "4. Переключить auto-update мода перед запуском",
+                        "5. Лимит авто-очистки бэкапов (МБ)",
+                        "0. Назад"
                     }));
 
-            if (choice == "[0] Назад")
+            if (choice == "0. Назад")
                 return;
 
-            if (choice == "[1] Изменить путь установки")
+            if (choice == "1. Изменить путь установки")
             {
                 var enteredPath = AnsiConsole.Ask<string>("Введите [cyan]полный путь[/] каталога установки:");
                 if (string.IsNullOrWhiteSpace(enteredPath))
@@ -849,28 +849,28 @@ internal static class Program
                 continue;
             }
 
-            if (choice == "[2] Сбросить путь к стандартному")
+            if (choice == "2. Сбросить путь к стандартному")
             {
                 cfg.InstallDir = GetDefaultInstallDir();
                 AppConfigStore.Save(cfg);
                 continue;
             }
 
-            if (choice == "[3] Переключить auto-update лаунчера")
+            if (choice == "3. Переключить auto-update лаунчера")
             {
                 cfg.AutoUpdateLauncher = !cfg.AutoUpdateLauncher;
                 AppConfigStore.Save(cfg);
                 continue;
             }
 
-            if (choice == "[4] Переключить auto-update мода перед запуском")
+            if (choice == "4. Переключить auto-update мода перед запуском")
             {
                 cfg.AutoUpdateBeforeLaunch = !cfg.AutoUpdateBeforeLaunch;
                 AppConfigStore.Save(cfg);
                 continue;
             }
 
-            if (choice == "[5] Лимит авто-очистки бэкапов (МБ)")
+            if (choice == "5. Лимит авто-очистки бэкапов (МБ)")
             {
                 var value = AnsiConsole.Ask<int>(
                     "Введите лимит в МБ ([grey]0 — отключить авто-очистку[/]):",
