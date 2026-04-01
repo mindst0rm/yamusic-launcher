@@ -118,7 +118,7 @@ public sealed class LauncherOrchestratorTests
         var result = await orchestrator.TrySelfUpdateLauncherAsync();
 
         Assert.True(result.UpdateStarted);
-        Assert.Contains("self-update:1.1.6", calls);
+        Assert.Contains($"self-update:{AppVersionProvider.DisplayVersion}", calls);
     }
 
     [Fact]
