@@ -3,7 +3,7 @@
 [![Release](https://img.shields.io/github/v/release/mindst0rm/yamusic-launcher?display_name=tag)](https://github.com/mindst0rm/yamusic-launcher/releases)
 [![Windows](https://img.shields.io/badge/platform-Windows%20x64-0078D6)](https://github.com/mindst0rm/yamusic-launcher)
 [![.NET](https://img.shields.io/badge/.NET-8.0-512BD4)](https://dotnet.microsoft.com/)
-[![Build](https://img.shields.io/badge/build-Release%20v1.1.5-success)](https://github.com/mindst0rm/yamusic-launcher/releases/tag/v1.1.5)
+[![Build](https://img.shields.io/badge/build-Release-success)](https://github.com/mindst0rm/yamusic-launcher/releases)
 [![Packages](https://img.shields.io/badge/Packages-GitHub%20Packages-181717?logo=github)](https://github.com/mindst0rm?tab=packages)
 
 Консольный лаунчер для Windows, который автоматизирует установку и запуск модифицированного клиента Яндекс Музыки.
@@ -73,7 +73,7 @@ Pipeline запуска и первичной установки:
 
 - Основной канал распространения: `GitHub Releases` (готовый Inno Setup installer).
 - Файл релиза: `YaMusicLauncher-Setup-<version>.exe`.
-- Актуальный релиз: `v1.1.5`.
+- Источник версии в репозитории: корневой файл `VERSION`.
 - Раздел `Packages` в GitHub заполняется публикацией NuGet-пакета `YaMusicLauncher.Distribution` через workflow.
 - Источник пакетов: `https://nuget.pkg.github.com/mindst0rm/index.json`.
 - Пакет содержит готовый publish-вывод лаунчера (`tools/win-x64`), включая `YaLauncher.exe`, `AsarFusePatcher.dll` и `7zip`.
@@ -90,12 +90,13 @@ dotnet nuget add source "https://nuget.pkg.github.com/mindst0rm/index.json" `
 
 ## 🤝 Credits
 
-- Спасибо [`TheKing-OfTime/YandexMusicModClient`](https://github.com/TheKing-OfTime/YandexMusicModClient) за мод-клиент и релизный источник `app.asar`, используемый лаунчером.
+- Текущий источник релизов мода: [`mindst0rm/ModYandexClient`](https://github.com/mindst0rm/ModYandexClient).
 
 ## 🏗️ Архитектура проекта
 
 ### `YaLauncher/` (.NET 8)
-- `Program.cs` - UI, bootstrap, пайплайн установки/обновления/патчинга.
+- `Program.cs` - UI, CLI, меню, elevation и рендеринг через `Spectre.Console`.
+- `Application/LauncherOrchestrator.cs` - orchestration high-level сценариев (`InitialSetup`, `Bootstrap`, install/update/patch/shortcuts).
 - `Storage/AppConfigStore.cs` - загрузка/сохранение конфигурации.
 - `Services/YandexMusicDownloader.cs` - загрузка клиента.
 - `Services/ModClientUpdater.cs` - обновление мода, бэкапы, changelog.
@@ -130,6 +131,12 @@ dotnet nuget add source "https://nuget.pkg.github.com/mindst0rm/index.json" `
 dotnet build YaLauncher/YaLauncher.sln
 ```
 
+Запуск тестов:
+
+```powershell
+dotnet test YaLauncher.Tests/YaLauncher.Tests.csproj
+```
+
 Релизная публикация:
 
 ```powershell
@@ -139,13 +146,15 @@ dotnet publish YaLauncher/YaLauncher.csproj -c Release -r win-x64 --self-contain
 Полная релизная сборка (publish + installer):
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\build-release.ps1 -Version 1.1.5
+$version = (Get-Content VERSION -Raw).Trim()
+powershell -ExecutionPolicy Bypass -File .\scripts\build-release.ps1 -Version $version
 ```
 
 Полная релизная сборка + автоматическая публикация GitHub Release по шаблону:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\build-release.ps1 -Version 1.1.5 -PublishGitHubRelease
+$version = (Get-Content VERSION -Raw).Trim()
+powershell -ExecutionPolicy Bypass -File .\scripts\build-release.ps1 -Version $version -PublishGitHubRelease
 ```
 
 Только publish (без installer):

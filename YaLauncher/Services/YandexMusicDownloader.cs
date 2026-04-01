@@ -5,11 +5,16 @@ using YamlDotNet.Serialization.NamingConventions;
 
 namespace YaLauncher.Services;
 
-internal sealed class YandexMusicDownloader
+internal sealed class YandexMusicDownloader : IYandexMusicDownloader
 {
-    private readonly HttpClient _http = new();
+    private readonly HttpClient _http;
 
     private const string BaseUrl = "https://music-desktop-application.s3.yandex.net";
+
+    public YandexMusicDownloader(HttpClient? http = null)
+    {
+        _http = http ?? new HttpClient();
+    }
 
     public async Task<(string FilePath, long TotalBytes)> DownloadLatestAsync(
         string workDir,

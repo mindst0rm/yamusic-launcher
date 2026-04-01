@@ -7,12 +7,17 @@ internal sealed class ModClientUpdater
 {
     private const long MaxLogSizeBytes = 5L * 1024L * 1024L;
     private readonly HttpClient _http;
+    private readonly HttpClient _redirectHttp;
 
-    public ModClientUpdater(HttpClient? http = null)
+    public ModClientUpdater(HttpClient? http = null, HttpClient? redirectHttp = null)
     {
         _http = http ?? new HttpClient();
         if (!_http.DefaultRequestHeaders.UserAgent.Any())
             _http.DefaultRequestHeaders.UserAgent.ParseAdd("YaMusicLauncher");
+
+        _redirectHttp = redirectHttp ?? CreateRedirectHttpClient();
+        if (!_redirectHttp.DefaultRequestHeaders.UserAgent.Any())
+            _redirectHttp.DefaultRequestHeaders.UserAgent.ParseAdd("YaMusicLauncher");
     }
 
     public async Task<string?> GetLatestVersionAsync(string owner, string repo, CancellationToken ct = default)
@@ -277,14 +282,11 @@ internal sealed class ModClientUpdater
     private async Task<string?> TryGetLatestTagViaRedirectAsync(string owner, string repo, CancellationToken ct)
     {
         var latestUrl = $"https://github.com/{owner}/{repo}/releases/latest";
-        using var handler = new HttpClientHandler { AllowAutoRedirect = false };
-        using var redirectClient = new HttpClient(handler);
-        redirectClient.DefaultRequestHeaders.UserAgent.ParseAdd("YaMusicLauncher");
 
         try
         {
             using var req = new HttpRequestMessage(HttpMethod.Get, latestUrl);
-            using var resp = await redirectClient.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct);
+            using var resp = await _redirectHttp.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct);
             if ((int)resp.StatusCode is < 300 or >= 400)
                 return null;
 
@@ -301,6 +303,12 @@ internal sealed class ModClientUpdater
         {
             return null;
         }
+    }
+
+    private static HttpClient CreateRedirectHttpClient()
+    {
+        var handler = new HttpClientHandler { AllowAutoRedirect = false };
+        return new HttpClient(handler, disposeHandler: true);
     }
 
     private async Task<GitHubReleaseResponse?> GetLatestReleaseInfoAsync(string owner, string repo, CancellationToken ct)

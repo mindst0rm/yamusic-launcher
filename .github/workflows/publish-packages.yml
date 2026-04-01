@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Launcher and package version (e.g. 1.1.5)"
-        required: true
-        default: "1.1.5"
+        description: "Optional override. Must match VERSION when provided."
+        required: false
+        default: ""
   release:
     types: [published]
 
@@ -30,10 +30,23 @@ jobs:
       - name: Resolve version
         shell: pwsh
         run: |
+          $repoVersion = (Get-Content VERSION -Raw).Trim()
+          if ([string]::IsNullOrWhiteSpace($repoVersion)) {
+            throw "VERSION file is empty."
+          }
+
           if ("${{ github.event_name }}" -eq "release") {
             $version = "${{ github.event.release.tag_name }}".TrimStart("v")
+            if ($version -ne $repoVersion) {
+              throw "Release tag version '$version' does not match VERSION '$repoVersion'."
+            }
+          } elseif (-not [string]::IsNullOrWhiteSpace("${{ inputs.version }}")) {
+            $version = "${{ inputs.version }}".Trim()
+            if ($version -ne $repoVersion) {
+              throw "Requested workflow version '$version' does not match VERSION '$repoVersion'."
+            }
           } else {
-            $version = "${{ inputs.version }}"
+            $version = $repoVersion
           }
 
           "VERSION=$version" >> $env:GITHUB_ENV

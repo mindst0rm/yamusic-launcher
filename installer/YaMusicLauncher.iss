@@ -3,7 +3,7 @@
 #define MyAppPublisher "m1ndst0rm"
 
 #ifndef AppVersion
-  #define AppVersion "1.1.5"
+  #define AppVersion "0.0.0-dev"
 #endif
 
 #ifndef SourceDir

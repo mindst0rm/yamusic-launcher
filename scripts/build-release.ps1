@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$Version = "1.1.5",
+    [string]$Version,
     [string]$Configuration = "Release",
     [switch]$SkipInstaller,
     [switch]$PublishGitHubRelease,
@@ -18,9 +18,26 @@ $publishDir = Join-Path $repoRoot "artifacts\publish\win-x64"
 $installerScript = Join-Path $repoRoot "installer\YaMusicLauncher.iss"
 $installerOutDir = Join-Path $repoRoot "installer\output"
 $releaseTemplatePath = Join-Path $repoRoot ".github\release-notes-template.md"
+$versionFilePath = Join-Path $repoRoot "VERSION"
 
 if ($SkipInstaller -and $PublishGitHubRelease) {
     throw "The flags -SkipInstaller and -PublishGitHubRelease cannot be used together."
+}
+
+if (-not (Test-Path $versionFilePath)) {
+    throw "VERSION file not found: $versionFilePath"
+}
+
+$repoVersion = (Get-Content -Raw -Path $versionFilePath).Trim()
+if ([string]::IsNullOrWhiteSpace($repoVersion)) {
+    throw "VERSION file is empty: $versionFilePath"
+}
+
+if ([string]::IsNullOrWhiteSpace($Version)) {
+    $Version = $repoVersion
+}
+elseif ($Version -ne $repoVersion) {
+    throw "Requested version '$Version' does not match VERSION file '$repoVersion'."
 }
 
 function Invoke-Checked {

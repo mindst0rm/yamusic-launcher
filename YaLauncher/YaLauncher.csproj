@@ -10,6 +10,10 @@
         <ApplicationIcon>assets\launcher.ico</ApplicationIcon>
     </PropertyGroup>
 
+    <PropertyGroup>
+        <SkipNativeAsarFuseBuild Condition="'$(SkipNativeAsarFuseBuild)'==''">false</SkipNativeAsarFuseBuild>
+    </PropertyGroup>
+
     <PropertyGroup Condition="'$(Configuration)'=='Release'">
         <SelfContained>true</SelfContained>
         <PublishSingleFile>true</PublishSingleFile>
@@ -31,12 +35,12 @@
         <ResolvedAsarFuseNativeDir></ResolvedAsarFuseNativeDir>
     </PropertyGroup>
 
-    <Target Name="BuildNativeAsarFuse" BeforeTargets="Build;Publish">
+    <Target Name="BuildNativeAsarFuse" BeforeTargets="Build;Publish" Condition="'$(SkipNativeAsarFuseBuild)'!='true'">
         <Exec Command="cmake -S &quot;$(NativeProjectDir)&quot; -B &quot;$(NativeBuildDir)&quot; -DCMAKE_BUILD_TYPE=Release" />
         <Exec Command="cmake --build &quot;$(NativeBuildDir)&quot; --config Release --target AsarFusePatcher" />
     </Target>
 
-    <Target Name="ResolveAsarFusePath" BeforeTargets="CopyAsarFuseOnBuild;CopyAsarFuseOnPublish;CopyMinGwDepsOnBuild;CopyMinGwDepsOnPublish">
+    <Target Name="ResolveAsarFusePath" BeforeTargets="CopyAsarFuseOnBuild;CopyAsarFuseOnPublish;CopyMinGwDepsOnBuild;CopyMinGwDepsOnPublish" Condition="'$(SkipNativeAsarFuseBuild)'!='true'">
         <PropertyGroup>
             <ResolvedAsarFuseNativePath Condition="Exists('$(NativeDllCandidateA)')">$(NativeDllCandidateA)</ResolvedAsarFuseNativePath>
             <ResolvedAsarFuseNativePath Condition="'$(ResolvedAsarFuseNativePath)'=='' and Exists('$(NativeDllCandidateB)')">$(NativeDllCandidateB)</ResolvedAsarFuseNativePath>
@@ -46,15 +50,15 @@
                Text="AsarFusePatcher.dll не найден после сборки. Проверены: '$(NativeDllCandidateA)' и '$(NativeDllCandidateB)'." />
     </Target>
 
-    <Target Name="CopyAsarFuseOnBuild" AfterTargets="Build" DependsOnTargets="ResolveAsarFusePath">
+    <Target Name="CopyAsarFuseOnBuild" AfterTargets="Build" DependsOnTargets="ResolveAsarFusePath" Condition="'$(SkipNativeAsarFuseBuild)'!='true'">
         <Copy SourceFiles="$(ResolvedAsarFuseNativePath)" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
     </Target>
 
-    <Target Name="CopyAsarFuseOnPublish" AfterTargets="Publish" DependsOnTargets="ResolveAsarFusePath">
+    <Target Name="CopyAsarFuseOnPublish" AfterTargets="Publish" DependsOnTargets="ResolveAsarFusePath" Condition="'$(SkipNativeAsarFuseBuild)'!='true'">
         <Copy SourceFiles="$(ResolvedAsarFuseNativePath)" DestinationFolder="$(PublishDir)" SkipUnchangedFiles="true" />
     </Target>
 
-    <Target Name="CopyMinGwDepsOnBuild" AfterTargets="Build" DependsOnTargets="ResolveAsarFusePath">
+    <Target Name="CopyMinGwDepsOnBuild" AfterTargets="Build" DependsOnTargets="ResolveAsarFusePath" Condition="'$(SkipNativeAsarFuseBuild)'!='true'">
         <ItemGroup>
             <_Deps Include="$(ResolvedAsarFuseNativeDir)\libstdc++-6.dll" Condition="Exists('$(ResolvedAsarFuseNativeDir)\libstdc++-6.dll')" />
             <_Deps Include="$(ResolvedAsarFuseNativeDir)\libgcc_s_seh-1.dll" Condition="Exists('$(ResolvedAsarFuseNativeDir)\libgcc_s_seh-1.dll')" />
@@ -63,7 +67,7 @@
         <Copy SourceFiles="@(_Deps)" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" Condition="'@(_Deps)'!=''" />
     </Target>
 
-    <Target Name="CopyMinGwDepsOnPublish" AfterTargets="Publish" DependsOnTargets="ResolveAsarFusePath">
+    <Target Name="CopyMinGwDepsOnPublish" AfterTargets="Publish" DependsOnTargets="ResolveAsarFusePath" Condition="'$(SkipNativeAsarFuseBuild)'!='true'">
         <ItemGroup>
             <_DepsPub Include="$(ResolvedAsarFuseNativeDir)\libstdc++-6.dll" Condition="Exists('$(ResolvedAsarFuseNativeDir)\libstdc++-6.dll')" />
             <_DepsPub Include="$(ResolvedAsarFuseNativeDir)\libgcc_s_seh-1.dll" Condition="Exists('$(ResolvedAsarFuseNativeDir)\libgcc_s_seh-1.dll')" />

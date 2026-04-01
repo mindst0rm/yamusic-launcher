@@ -4,7 +4,7 @@ using System.Runtime.Versioning;
 using System.Security.Principal;
 using System.Text;
 using Spectre.Console;
-using YaLauncher.Native;
+using YaLauncher.Application;
 using YaLauncher.Services;
 using YaLauncher.Storage;
 using YaLauncher.Utils;
@@ -14,12 +14,6 @@ namespace YaLauncher;
 [SupportedOSPlatform("windows")]
 internal static class Program
 {
-    private const string LauncherVersion = "1.1.5";
-    private static readonly string WorkDir = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "YaMusicLauncher",
-        "work");
-    private static readonly string SevenZipExe = Path.Combine(AppContext.BaseDirectory, "7zip", "7za.exe");
     private const int ParallelDownloads = 6;
     private static bool IntroAnimationShown;
 
@@ -60,19 +54,10 @@ internal static class Program
         Exit
     }
 
-    private sealed record InitialSetupResult(
-        string InstallDir,
-        string ExePath,
-        ModInstallResult ModResult,
-        int PatchedCount,
-        ShortcutResult Shortcuts);
-
-    private sealed record BootstrapResult(string ExePath, ModInstallResult? ModResult, int PatchedCount, string? Warning);
-
     static async Task<int> Main(string[] args)
     {
-        Console.OutputEncoding = System.Text.Encoding.UTF8;
-        Console.Title = $"YaMusic Launcher v{LauncherVersion}";
+        Console.OutputEncoding = Encoding.UTF8;
+        Console.Title = $"YaMusic Launcher v{AppVersionProvider.DisplayVersion}";
 
         var flags = new HashSet<string>(args, StringComparer.OrdinalIgnoreCase);
         var cfg = AppConfigStore.Load();
@@ -109,6 +94,8 @@ internal static class Program
 
     private static async Task<int> RunInteractiveMenuAsync(AppConfig cfg)
     {
+        var orchestrator = CreateOrchestrator();
+
         while (true)
         {
             if (!IntroAnimationShown)
@@ -119,7 +106,7 @@ internal static class Program
 
             RedrawHeader();
             ShowLauncherStateSummary(cfg);
-            if (!IsInitialSetupDoneForSelectedDir(cfg.InstallDir!))
+            if (!orchestrator.IsInitialSetupDone(cfg.InstallDir!))
             {
                 AnsiConsole.MarkupLine("[yellow]Первичная установка еще не выполнена.[/]");
                 AnsiConsole.MarkupLine("[grey]Рекомендуется сначала запустить пункт 'Первичная установка'.[/]");
@@ -134,10 +121,11 @@ internal static class Program
             {
                 RunSettingsMenu(cfg);
                 cfg = AppConfigStore.Load();
+                orchestrator = CreateOrchestrator();
                 continue;
             }
 
-            var action = PromptMenuAction(section, cfg);
+            var action = PromptMenuAction(section, cfg, orchestrator);
             if (action is null)
                 continue;
 
@@ -151,7 +139,7 @@ internal static class Program
                     case MenuAction.InitialSetup:
                         if (!EnsureElevatedIfRequired(cfg.InstallDir!, [ArgRunInitialSetup], EmptyFlags))
                             return 0;
-                        await RunInitialSetupInteractiveAsync(cfg);
+                        await RunInitialSetupInteractiveAsync(cfg, orchestrator);
                         break;
 
                     case MenuAction.InitialSetupDisabled:
@@ -166,13 +154,13 @@ internal static class Program
                     case MenuAction.InstallClient:
                         if (!EnsureElevatedIfRequired(cfg.InstallDir!, [ArgRunInstallClient], EmptyFlags))
                             return 0;
-                        await InstallClientOnlyInteractiveAsync(cfg);
+                        await InstallClientOnlyInteractiveAsync(cfg, orchestrator);
                         break;
 
                     case MenuAction.UpdateMod:
                         if (!EnsureElevatedIfRequired(cfg.InstallDir!, [ArgRunUpdateMod], EmptyFlags))
                             return 0;
-                        await UpdateModOnlyInteractiveAsync(cfg);
+                        await UpdateModOnlyInteractiveAsync(cfg, orchestrator);
                         break;
 
                     case MenuAction.ShowLatestModVersion:
@@ -182,7 +170,7 @@ internal static class Program
                     case MenuAction.PatchClient:
                         if (!EnsureElevatedIfRequired(cfg.InstallDir!, [ArgRunPatch], EmptyFlags))
                             return 0;
-                        PatchOnlyInteractive(cfg);
+                        PatchOnlyInteractive(cfg, orchestrator);
                         break;
 
                     case MenuAction.RestoreBackup:
@@ -198,13 +186,13 @@ internal static class Program
                         break;
 
                     case MenuAction.CreateShortcuts:
-                        CreateShortcutsInteractive(cfg);
+                        CreateShortcutsInteractive(cfg, orchestrator);
                         break;
 
                     case MenuAction.LaunchViaLauncher:
                         if (!EnsureElevatedIfRequired(cfg.InstallDir!, [ArgBootstrap, ArgLaunchClient], EmptyFlags))
                             return 0;
-                        await RunBootstrapInteractiveAsync(cfg);
+                        await RunBootstrapInteractiveAsync(cfg, orchestrator);
                         break;
                 }
             }
@@ -216,6 +204,7 @@ internal static class Program
 
             PauseAndContinue();
             cfg = AppConfigStore.Load();
+            orchestrator = CreateOrchestrator();
         }
     }
 
@@ -229,54 +218,54 @@ internal static class Program
                 .WrapAround(true)
                 .AddChoices(new[]
                 {
-                    "⚡ Основные действия",
-                    "⬇️ Установка и обновление",
-                    "🧰 Полезные утилиты",
-                    "⚙️ Настройки",
-                    "🚪 Выход"
+                    "[1] Основные действия",
+                    "[2] Установка и обновление",
+                    "[3] Полезные утилиты",
+                    "[4] Настройки",
+                    "[0] Выход"
                 }));
 
         return selected switch
         {
-            "⚡ Основные действия" => MenuSection.Core,
-            "⬇️ Установка и обновление" => MenuSection.InstallUpdate,
-            "🧰 Полезные утилиты" => MenuSection.Utilities,
-            "⚙️ Настройки" => MenuSection.Settings,
+            "[1] Основные действия" => MenuSection.Core,
+            "[2] Установка и обновление" => MenuSection.InstallUpdate,
+            "[3] Полезные утилиты" => MenuSection.Utilities,
+            "[4] Настройки" => MenuSection.Settings,
             _ => MenuSection.Exit
         };
     }
 
-    private static MenuAction? PromptMenuAction(MenuSection section, AppConfig cfg)
+    private static MenuAction? PromptMenuAction(MenuSection section, AppConfig cfg, LauncherOrchestrator orchestrator)
     {
-        var hasInstalledClientInSelectedDir = IsInitialSetupDoneForSelectedDir(cfg.InstallDir!);
+        var hasInstalledClientInSelectedDir = orchestrator.IsInitialSetupDone(cfg.InstallDir!);
         var initialSetupChoice = hasInstalledClientInSelectedDir
-            ? "[grey]🚀 Первичная установка (уже выполнена)[/]"
-            : "🚀 Первичная установка (1/4 клиент -> 2/4 мод -> 3/4 патч -> 4/4 ярлыки)";
+            ? "[grey][1] Первичная установка (уже выполнена)[/]"
+            : "[1] Первичная установка (1/4 клиент -> 2/4 мод -> 3/4 патч -> 4/4 ярлыки)";
 
         var choices = section switch
         {
             MenuSection.Core => new[]
             {
                 initialSetupChoice,
-                "▶️ Запустить Я.Музыку через лаунчер",
-                "◀️ Назад"
+                "[2] Запустить Я.Музыку через лаунчер",
+                "[0] Назад"
             },
             MenuSection.InstallUpdate => new[]
             {
-                "⬇️ Переустановить клиент Я.Музыки",
-                "🧩 Обновить мод (app.asar)",
-                "🔧 Пропатчить установленный клиент",
-                "🔗 Создать/обновить ярлыки",
-                "◀️ Назад"
+                "[1] Переустановить клиент Я.Музыки",
+                "[2] Обновить мод (app.asar)",
+                "[3] Пропатчить установленный клиент",
+                "[4] Создать/обновить ярлыки",
+                "[0] Назад"
             },
             MenuSection.Utilities => new[]
             {
-                "🔎 Показать версии мода и changelog (GitHub)",
-                "📦 Восстановить мод из бэкапа",
-                "🗑️ Удалить бэкапы",
-                "◀️ Назад"
+                "[1] Показать версии мода и changelog (GitHub)",
+                "[2] Восстановить мод из бэкапа",
+                "[3] Удалить бэкапы",
+                "[0] Назад"
             },
-            _ => ["◀️ Назад"]
+            _ => ["[0] Назад"]
         };
 
         var title = section switch
@@ -300,14 +289,14 @@ internal static class Program
             var x when x == initialSetupChoice => hasInstalledClientInSelectedDir
                 ? MenuAction.InitialSetupDisabled
                 : MenuAction.InitialSetup,
-            "▶️ Запустить Я.Музыку через лаунчер" => MenuAction.LaunchViaLauncher,
-            "⬇️ Переустановить клиент Я.Музыки" => MenuAction.InstallClient,
-            "🧩 Обновить мод (app.asar)" => MenuAction.UpdateMod,
-            "🔧 Пропатчить установленный клиент" => MenuAction.PatchClient,
-            "🔗 Создать/обновить ярлыки" => MenuAction.CreateShortcuts,
-            "🔎 Показать версии мода и changelog (GitHub)" => MenuAction.ShowLatestModVersion,
-            "📦 Восстановить мод из бэкапа" => MenuAction.RestoreBackup,
-            "🗑️ Удалить бэкапы" => MenuAction.DeleteBackups,
+            "[2] Запустить Я.Музыку через лаунчер" => MenuAction.LaunchViaLauncher,
+            "[1] Переустановить клиент Я.Музыки" => MenuAction.InstallClient,
+            "[2] Обновить мод (app.asar)" => MenuAction.UpdateMod,
+            "[3] Пропатчить установленный клиент" => MenuAction.PatchClient,
+            "[4] Создать/обновить ярлыки" => MenuAction.CreateShortcuts,
+            "[1] Показать версии мода и changelog (GitHub)" => MenuAction.ShowLatestModVersion,
+            "[2] Восстановить мод из бэкапа" => MenuAction.RestoreBackup,
+            "[3] Удалить бэкапы" => MenuAction.DeleteBackups,
             _ => null
         };
     }
@@ -317,7 +306,7 @@ internal static class Program
         if (!EnsureElevatedIfRequired(cfg.InstallDir!, [ArgRunInitialSetup], flags))
             return 0;
 
-        var result = await ExecuteInitialSetupAsync(cfg);
+        var result = await CreateOrchestrator().ExecuteInitialSetupAsync(cfg, ParallelDownloads, PrintSetupStage);
         RedrawHeader();
         ShowInitialSetupResult(result);
         return 0;
@@ -328,7 +317,7 @@ internal static class Program
         if (!EnsureElevatedIfRequired(cfg.InstallDir!, [ArgRunInstallClient], flags))
             return 0;
 
-        var exe = await InstallLatestClientAsync(cfg.InstallDir!, ParallelDownloads);
+        var exe = await CreateOrchestrator().InstallClientAsync(cfg, ParallelDownloads);
         RedrawHeader();
         ShowInfoPanel("Клиент установлен", $"Каталог: {cfg.InstallDir}\nEXE: {exe}");
         return 0;
@@ -339,11 +328,7 @@ internal static class Program
         if (!EnsureElevatedIfRequired(cfg.InstallDir!, [ArgRunUpdateMod], flags))
             return 0;
 
-        var updater = new ModClientUpdater();
-        var processManager = new YandexProcessManager();
-        await processManager.StopAllAsync();
-        var result = await InstallLatestModAsync(cfg, updater, cfg.InstallDir!);
-
+        var result = await CreateOrchestrator().UpdateModAsync(cfg);
         RedrawHeader();
         ShowModUpdateResult(result);
         return 0;
@@ -354,8 +339,9 @@ internal static class Program
         if (!EnsureElevatedIfRequired(cfg.InstallDir!, [ArgRunPatch], flags))
             return 0;
 
-        var exe = FindInstalledExeOrThrow(cfg.InstallDir!);
-        var patched = ApplyPatchOrThrow(exe);
+        var orchestrator = CreateOrchestrator();
+        var patched = orchestrator.PatchClient(cfg);
+        var exe = new InstalledClientLocator().FindInstalledExeOrThrow(cfg.InstallDir!);
 
         RedrawHeader();
         ShowInfoPanel("Патч применен", $"EXE: {exe}\nОтключено участков: {patched}");
@@ -367,7 +353,7 @@ internal static class Program
         if (!EnsureElevatedIfRequired(cfg.InstallDir!, [ArgRunCreateShortcuts], flags))
             return 0;
 
-        var shortcuts = CreateOrUpdateShortcuts(cfg);
+        var shortcuts = CreateOrchestrator().CreateShortcuts(cfg);
         RedrawHeader();
         ShowInfoPanel("Ярлыки готовы",
             $"Я.Музыка (Desktop): {shortcuts.MusicDesktopShortcutPath}\n" +
@@ -379,9 +365,11 @@ internal static class Program
 
     private static async Task<int> RunBootstrapModeAsync(AppConfig cfg, IReadOnlySet<string> flags, string[] rawArgs)
     {
+        var orchestrator = CreateOrchestrator();
+
         RedrawHeader();
 
-        if (!IsInitialSetupDoneForSelectedDir(cfg.InstallDir!))
+        if (!orchestrator.IsInitialSetupDone(cfg.InstallDir!))
         {
             ShowInfoPanel(
                 "Запуск через ярлык недоступен",
@@ -395,8 +383,8 @@ internal static class Program
 
         var launchClient = flags.Contains(ArgLaunchClient);
         var noUpdate = flags.Contains(ArgNoUpdate);
-        var owner = string.IsNullOrWhiteSpace(cfg.GitHubOwner) ? "TheKing-OfTime" : cfg.GitHubOwner;
-        var repo = string.IsNullOrWhiteSpace(cfg.GitHubRepo) ? "YandexMusicModClient" : cfg.GitHubRepo;
+        var owner = string.IsNullOrWhiteSpace(cfg.GitHubOwner) ? AppConfig.DefaultGitHubOwner : cfg.GitHubOwner;
+        var repo = string.IsNullOrWhiteSpace(cfg.GitHubRepo) ? AppConfig.DefaultGitHubRepo : cfg.GitHubRepo;
 
         RedrawHeader();
         WriteBootstrapLog("Yandex Music Mod: запуск через лаунчер", "deepskyblue1");
@@ -415,36 +403,32 @@ internal static class Program
             "grey");
         AnsiConsole.WriteLine();
 
-        var result = await ExecuteBootstrapAsync(cfg, launchClient, noUpdate, WriteBootstrapLog);
+        var result = await orchestrator.ExecuteBootstrapAsync(cfg, launchClient, noUpdate, WriteBootstrapLog);
         if (!string.IsNullOrWhiteSpace(result.Warning))
-            WriteBootstrapLog(result.Warning!, "yellow");
+            WriteBootstrapLog(result.Warning, "yellow");
 
         WriteBootstrapLog("Последовательность запуска завершена.", "green");
 
         return 0;
     }
 
-    private static async Task RunInitialSetupInteractiveAsync(AppConfig cfg)
+    private static async Task RunInitialSetupInteractiveAsync(AppConfig cfg, LauncherOrchestrator orchestrator)
     {
-        var result = await ExecuteInitialSetupAsync(cfg);
+        var result = await orchestrator.ExecuteInitialSetupAsync(cfg, ParallelDownloads, PrintSetupStage);
         RedrawHeader();
         ShowInitialSetupResult(result);
     }
 
-    private static async Task InstallClientOnlyInteractiveAsync(AppConfig cfg)
+    private static async Task InstallClientOnlyInteractiveAsync(AppConfig cfg, LauncherOrchestrator orchestrator)
     {
-        var exe = await InstallLatestClientAsync(cfg.InstallDir!, ParallelDownloads);
+        var exe = await orchestrator.InstallClientAsync(cfg, ParallelDownloads);
         RedrawHeader();
         ShowInfoPanel("Клиент переустановлен", $"Каталог: {cfg.InstallDir}\nEXE: {exe}");
     }
 
-    private static async Task UpdateModOnlyInteractiveAsync(AppConfig cfg)
+    private static async Task UpdateModOnlyInteractiveAsync(AppConfig cfg, LauncherOrchestrator orchestrator)
     {
-        var updater = new ModClientUpdater();
-        var processManager = new YandexProcessManager();
-        await processManager.StopAllAsync();
-        var result = await InstallLatestModAsync(cfg, updater, cfg.InstallDir!);
-
+        var result = await orchestrator.UpdateModAsync(cfg);
         RedrawHeader();
         ShowModUpdateResult(result);
     }
@@ -452,8 +436,8 @@ internal static class Program
     private static async Task ShowLatestModVersionInteractiveAsync(AppConfig cfg)
     {
         var updater = new ModClientUpdater();
-        var owner = string.IsNullOrWhiteSpace(cfg.GitHubOwner) ? "TheKing-OfTime" : cfg.GitHubOwner;
-        var repo = string.IsNullOrWhiteSpace(cfg.GitHubRepo) ? "YandexMusicModClient" : cfg.GitHubRepo;
+        var owner = string.IsNullOrWhiteSpace(cfg.GitHubOwner) ? AppConfig.DefaultGitHubOwner : cfg.GitHubOwner;
+        var repo = string.IsNullOrWhiteSpace(cfg.GitHubRepo) ? AppConfig.DefaultGitHubRepo : cfg.GitHubRepo;
         var releases = await updater.GetRecentReleasesAsync(owner, repo, limit: 8);
 
         RedrawHeader();
@@ -493,10 +477,10 @@ internal static class Program
         ShowInfoPanel("Версии мода и changelog", sb.ToString().TrimEnd());
     }
 
-    private static void PatchOnlyInteractive(AppConfig cfg)
+    private static void PatchOnlyInteractive(AppConfig cfg, LauncherOrchestrator orchestrator)
     {
-        var exe = FindInstalledExeOrThrow(cfg.InstallDir!);
-        var patched = ApplyPatchOrThrow(exe);
+        var patched = orchestrator.PatchClient(cfg);
+        var exe = new InstalledClientLocator().FindInstalledExeOrThrow(cfg.InstallDir!);
 
         RedrawHeader();
         ShowInfoPanel("Патч применен", $"EXE: {exe}\nОтключено участков: {patched}");
@@ -513,7 +497,7 @@ internal static class Program
             return;
         }
 
-        var choices = backups.Select((b, i) => $"{i + 1}) {b.FileName} ({b.CreatedAt:yyyy-MM-dd HH:mm:ss})").ToList();
+        var choices = backups.Select((backup, index) => $"{index + 1}) {backup.FileName} ({backup.CreatedAt:yyyy-MM-dd HH:mm:ss})").ToList();
         choices.Add("0) Назад");
 
         var selected = AnsiConsole.Prompt(
@@ -530,8 +514,7 @@ internal static class Program
             throw new InvalidOperationException("Не удалось распознать выбранный бэкап.");
 
         var chosen = backups[index - 1];
-        var processManager = new YandexProcessManager();
-        processManager.StopAllAsync().GetAwaiter().GetResult();
+        new ProcessControllerAdapter().StopAllAsync().GetAwaiter().GetResult();
         updater.RestoreBackup(cfg.InstallDir!, chosen.FullPath, cfg.BackupAutoCleanupLimitMb);
 
         RedrawHeader();
@@ -557,15 +540,15 @@ internal static class Program
                 .PageSize(8)
                 .AddChoices(new[]
                 {
-                    "🗑️ Удалить один бэкап",
-                    "♻️ Очистить все бэкапы",
-                    "◀️ Назад"
+                    "[1] Удалить один бэкап",
+                    "[2] Очистить все бэкапы",
+                    "[0] Назад"
                 }));
 
-        if (mode == "◀️ Назад")
+        if (mode == "[0] Назад")
             return;
 
-        if (mode == "♻️ Очистить все бэкапы")
+        if (mode == "[2] Очистить все бэкапы")
         {
             if (!AnsiConsole.Confirm("Удалить [red]все[/] бэкапы?"))
                 return;
@@ -582,11 +565,11 @@ internal static class Program
         }
 
         var choices = backups
-            .Select((b, i) =>
+            .Select((backup, index) =>
             {
                 long size = 0;
-                try { size = new FileInfo(b.FullPath).Length; } catch { }
-                return $"{i + 1}) {b.FileName} ({b.CreatedAt:yyyy-MM-dd HH:mm:ss}, {FormatBytes(size)})";
+                try { size = new FileInfo(backup.FullPath).Length; } catch { }
+                return $"{index + 1}) {backup.FileName} ({backup.CreatedAt:yyyy-MM-dd HH:mm:ss}, {FormatBytes(size)})";
             })
             .ToList();
         choices.Add("0) Назад");
@@ -619,9 +602,9 @@ internal static class Program
             $"Стало: {FormatBytes(totalAfterDelete)}");
     }
 
-    private static void CreateShortcutsInteractive(AppConfig cfg)
+    private static void CreateShortcutsInteractive(AppConfig cfg, LauncherOrchestrator orchestrator)
     {
-        var shortcuts = CreateOrUpdateShortcuts(cfg);
+        var shortcuts = orchestrator.CreateShortcuts(cfg);
         RedrawHeader();
         ShowInfoPanel("Ярлыки обновлены",
             $"Я.Музыка (Desktop): {shortcuts.MusicDesktopShortcutPath}\n" +
@@ -630,258 +613,18 @@ internal static class Program
             $"Лаунчер (Start Menu): {shortcuts.LauncherStartMenuShortcutPath}");
     }
 
-    private static async Task RunBootstrapInteractiveAsync(AppConfig cfg)
+    private static async Task RunBootstrapInteractiveAsync(AppConfig cfg, LauncherOrchestrator orchestrator)
     {
-        if (!IsInitialSetupDoneForSelectedDir(cfg.InstallDir!))
+        if (!orchestrator.IsInitialSetupDone(cfg.InstallDir!))
             throw new InvalidOperationException("Первичная установка не завершена.");
 
-        var result = await ExecuteBootstrapAsync(cfg, launchClient: true, noUpdate: false);
+        var result = await orchestrator.ExecuteBootstrapAsync(cfg, launchClient: true, noUpdate: false);
 
         RedrawHeader();
         ShowInfoPanel("Запуск через лаунчер выполнен",
             $"EXE: {result.ExePath}\nПатч участков: {result.PatchedCount}" +
             (string.IsNullOrWhiteSpace(result.Warning) ? string.Empty : $"\nПредупреждение: {result.Warning}"));
     }
-
-    private static async Task<InitialSetupResult> ExecuteInitialSetupAsync(AppConfig cfg)
-    {
-        EnsureSevenZip();
-        var installDir = cfg.InstallDir!;
-
-        var processManager = new YandexProcessManager();
-        await processManager.StopAllAsync();
-
-        PrintSetupStage("Шаг 1/4: скачивание и установка клиента Я.Музыки");
-        var exePath = await InstallLatestClientAsync(installDir, ParallelDownloads, stagePrefix: "1/4");
-
-        PrintSetupStage("Шаг 2/4: скачивание и установка модифицированного app.asar");
-        var updater = new ModClientUpdater();
-        var modResult = await InstallLatestModAsync(cfg, updater, installDir, stagePrefix: "2/4");
-
-        PrintSetupStage("Шаг 3/4: патчинг клиента через AsarFusePatcher.dll");
-        var patchedCount = ApplyPatchOrThrow(exePath);
-
-        PrintSetupStage("Шаг 4/4: создание ярлыков");
-        var shortcuts = CreateOrUpdateShortcuts(cfg, exePath);
-
-        cfg.IsInitialSetupCompleted = true;
-        AppConfigStore.Save(cfg);
-
-        return new InitialSetupResult(installDir, exePath, modResult, patchedCount, shortcuts);
-    }
-
-    private static async Task<BootstrapResult> ExecuteBootstrapAsync(
-        AppConfig cfg,
-        bool launchClient,
-        bool noUpdate,
-        Action<string, string>? log = null)
-    {
-        log?.Invoke("Проверяем окружение лаунчера...", "cyan");
-        EnsureSevenZip();
-        var installDir = cfg.InstallDir!;
-        if (!Directory.Exists(installDir))
-            throw new DirectoryNotFoundException($"Каталог установки не найден: {installDir}");
-
-        log?.Invoke("Ищем установленный клиент Я.Музыки...", "cyan");
-        var exePath = FindInstalledExeOrThrow(installDir);
-
-        log?.Invoke("Останавливаем процессы Я.Музыки...", "cyan");
-        var processManager = new YandexProcessManager();
-        await processManager.StopAllAsync();
-        log?.Invoke("Процессы остановлены.", "green");
-
-        ModInstallResult? modResult = null;
-        string? warning = null;
-        var owner = string.IsNullOrWhiteSpace(cfg.GitHubOwner) ? "TheKing-OfTime" : cfg.GitHubOwner;
-        var repo = string.IsNullOrWhiteSpace(cfg.GitHubRepo) ? "YandexMusicModClient" : cfg.GitHubRepo;
-        if (cfg.AutoUpdateBeforeLaunch && !noUpdate)
-        {
-            log?.Invoke($"Проверяем актуальную версию мода на GitHub ({owner}/{repo})...", "cyan");
-            try
-            {
-                var updater = new ModClientUpdater();
-                modResult = await updater.InstallLatestAsync(
-                    installDir,
-                    owner,
-                    repo,
-                    cfg.BackupAutoCleanupLimitMb);
-
-                if (modResult.Updated)
-                {
-                    log?.Invoke(
-                        $"Мод обновлен: {modResult.InstalledVersion ?? "unknown"} -> {modResult.LatestVersion ?? "unknown"}",
-                        "green");
-                }
-                else
-                {
-                    log?.Invoke(
-                        $"Мод актуален: {modResult.InstalledVersion ?? modResult.LatestVersion ?? "unknown"}",
-                        "green");
-                }
-            }
-            catch (Exception ex)
-            {
-                warning = $"Не удалось обновить мод-клиент: {ex.Message}";
-                log?.Invoke(warning, "yellow");
-            }
-        }
-        else
-        {
-            var reason = noUpdate ? "флаг --no-update" : "настройка auto-update выключена";
-            log?.Invoke($"Шаг проверки обновлений пропущен ({reason}).", "grey");
-        }
-
-        var patchedCount = 0;
-        if (modResult?.Updated == true)
-        {
-            log?.Invoke("Обновление найдено, применяем DLL-патч клиента...", "cyan");
-            patchedCount = ApplyPatchOrThrow(exePath);
-            log?.Invoke($"Патч применен. Изменено участков: {patchedCount}", "green");
-        }
-        else
-        {
-            var reason = modResult is { Updated: false }
-                ? "обновлений мода нет"
-                : "обновление не выполнялось";
-            log?.Invoke($"Шаг патчинга пропущен ({reason}).", "grey");
-        }
-
-        if (launchClient)
-        {
-            log?.Invoke("Запускаем клиент Я.Музыки...", "cyan");
-            LaunchClient(exePath);
-            log?.Invoke("Клиент запущен.", "green");
-        }
-
-        return new BootstrapResult(exePath, modResult, patchedCount, warning);
-    }
-
-    private static async Task<string> InstallLatestClientAsync(string installDir, int parallel, string stagePrefix = "")
-    {
-        EnsureSevenZip();
-        ValidateInstallPathForDelete(installDir);
-
-        string archivePath = string.Empty;
-        string locatedExe = string.Empty;
-
-        var downloader = new YandexMusicDownloader();
-        await AnsiConsole.Progress()
-            .Columns(new ProgressColumn[]
-            {
-                new TaskDescriptionColumn(),
-                new ProgressBarColumn(),
-                new PercentageColumn(),
-                new DownloadedColumn(),
-                new TransferSpeedColumn(),
-                new RemainingTimeColumn()
-            })
-            .StartAsync(async ctx =>
-            {
-                var tCleanup = ctx.AddTask(BuildStageTaskMarkup(stagePrefix, "Подготовка каталога установки", "grey"), maxValue: 1, autoStart: true);
-                var tDownload = ctx.AddTask(BuildStageTaskMarkup(stagePrefix, "Загрузка клиента Я.Музыки", "cyan"), autoStart: false);
-                var tExtract = ctx.AddTask(BuildStageTaskMarkup(stagePrefix, "Распаковка клиента", "yellow"), maxValue: 100, autoStart: false);
-
-                if (Directory.Exists(installDir))
-                    SafeDelete.DeleteDirectory(installDir);
-                Directory.CreateDirectory(installDir);
-                tCleanup.Value = 1;
-
-                tDownload.StartTask();
-                var dlProgress = new Progress<DownloadProgress>(p =>
-                {
-                    if (p.TotalBytes > 0 && tDownload.MaxValue == 100)
-                        tDownload.MaxValue = Math.Max(1, p.TotalBytes);
-
-                    tDownload.Value = p.ReceivedBytes;
-                    if (p.TotalBytes > 0)
-                    {
-                        var description = $"{BuildStageTaskTitle(stagePrefix, "Загрузка клиента Я.Музыки")} ({FormatBytes(p.ReceivedBytes)}/{FormatBytes(p.TotalBytes)})";
-                        tDownload.Description =
-                            $"[cyan]{Markup.Escape(description)}[/]";
-                    }
-                });
-
-                (archivePath, _) = await downloader.DownloadLatestAsync(WorkDir, parallel, dlProgress);
-                tDownload.Value = tDownload.MaxValue;
-
-                tExtract.StartTask();
-                await SevenZipExtractor.ExtractAsync(SevenZipExe, archivePath, installDir,
-                    progress: new Progress<double>(p => tExtract.Value = p), ct: default);
-                tExtract.Value = tExtract.MaxValue;
-
-                locatedExe = ExecutableFinder.FindExe(installDir);
-            });
-
-        return locatedExe;
-    }
-
-    private static async Task<ModInstallResult> InstallLatestModAsync(AppConfig cfg, ModClientUpdater updater, string installDir, string stagePrefix = "")
-    {
-        ModInstallResult? result = null;
-        await AnsiConsole.Progress()
-            .Columns(new ProgressColumn[]
-            {
-                new TaskDescriptionColumn(),
-                new ProgressBarColumn(),
-                new PercentageColumn(),
-                new DownloadedColumn(),
-                new TransferSpeedColumn(),
-                new RemainingTimeColumn()
-            })
-            .StartAsync(async ctx =>
-            {
-                var task = ctx.AddTask(BuildStageTaskMarkup(stagePrefix, "Установка мод-клиента (app.asar)", "green"), autoStart: true);
-                var progress = new Progress<DownloadProgress>(p =>
-                {
-                    if (p.TotalBytes > 0 && task.MaxValue == 100)
-                        task.MaxValue = Math.Max(1, p.TotalBytes);
-                    task.Value = p.ReceivedBytes;
-                });
-
-                result = await updater.InstallLatestAsync(
-                    installDir,
-                    cfg.GitHubOwner,
-                    cfg.GitHubRepo,
-                    cfg.BackupAutoCleanupLimitMb,
-                    progress);
-                task.Value = task.MaxValue;
-            });
-
-        return result ?? throw new InvalidOperationException("Не удалось получить результат обновления мода.");
-    }
-
-    private static int ApplyPatchOrThrow(string exePath)
-    {
-        var dry = FuseLib.Disable(exePath, dryRun: true, limit: -1, out var dryError);
-        if (dry < 0)
-            throw new InvalidOperationException(DescribeFuseFailure(dry, dryError));
-
-        var rc = FuseLib.Disable(exePath, dryRun: false, limit: -1, out var applyError);
-        if (rc < 0)
-            throw new InvalidOperationException(DescribeFuseFailure(rc, applyError));
-
-        return rc;
-    }
-
-    private static ShortcutResult CreateOrUpdateShortcuts(AppConfig cfg, string? iconPath = null)
-    {
-        var launcherPath = Environment.ProcessPath
-                           ?? throw new InvalidOperationException("Не удалось определить путь текущего EXE.");
-        var arguments = $"{ArgBootstrap} {ArgLaunchClient}";
-        var service = new ShortcutService();
-        var musicIcon = iconPath ?? TryFindInstalledExe(cfg.InstallDir!);
-        var launcherIcon = Path.Combine(AppContext.BaseDirectory, "assets", "launcher.ico");
-        if (!File.Exists(launcherIcon))
-            launcherIcon = launcherPath;
-
-        return service.CreateOrUpdate(launcherPath, arguments, musicIcon, launcherIcon);
-    }
-
-    private static string BuildStageTaskTitle(string stagePrefix, string title) =>
-        string.IsNullOrWhiteSpace(stagePrefix) ? title : $"Шаг {stagePrefix}: {title}";
-
-    private static string BuildStageTaskMarkup(string stagePrefix, string title, string color) =>
-        $"[{color}]{Markup.Escape(BuildStageTaskTitle(stagePrefix, title))}[/]";
 
     private static string FormatReleaseTitle(int index, ModReleaseInfo release)
     {
@@ -906,7 +649,7 @@ internal static class Program
         var lines = normalized
             .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Select(NormalizeReleaseLine)
-            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Where(line => !string.IsNullOrWhiteSpace(line))
             .ToList();
 
         var clippedByLines = lines.Count > maxLines;
@@ -939,46 +682,6 @@ internal static class Program
     {
         AnsiConsole.WriteLine();
         AnsiConsole.MarkupLine($"[bold blue]{Markup.Escape(text)}[/]");
-    }
-
-    private static string FindInstalledExeOrThrow(string installDir)
-    {
-        if (!Directory.Exists(installDir))
-            throw new DirectoryNotFoundException($"Каталог установки не найден: {installDir}");
-        return ExecutableFinder.FindExe(installDir);
-    }
-
-    private static bool IsInitialSetupDoneForSelectedDir(string installDir)
-    {
-        if (string.IsNullOrWhiteSpace(installDir) || !Directory.Exists(installDir))
-            return false;
-
-        try
-        {
-            _ = ExecutableFinder.FindExe(installDir);
-            return true;
-        }
-        catch
-        {
-            return false;
-        }
-    }
-
-    private static string? TryFindInstalledExe(string installDir)
-    {
-        try { return FindInstalledExeOrThrow(installDir); }
-        catch { return null; }
-    }
-
-    private static void LaunchClient(string exePath)
-    {
-        var workingDir = Path.GetDirectoryName(exePath) ?? Directory.GetCurrentDirectory();
-        var psi = new ProcessStartInfo(exePath)
-        {
-            WorkingDirectory = workingDir,
-            UseShellExecute = true
-        };
-        Process.Start(psi);
     }
 
     private static bool EnsureElevatedIfRequired(string installDir, IEnumerable<string> relaunchArgs, IReadOnlySet<string> currentFlags)
@@ -1021,7 +724,6 @@ internal static class Program
         }
         catch (Win32Exception ex) when (ex.NativeErrorCode == 1223)
         {
-            // UAC canceled by user
             return false;
         }
     }
@@ -1039,8 +741,7 @@ internal static class Program
         {
             Directory.CreateDirectory(installDir);
             var probe = Path.Combine(installDir, $".write_probe_{Guid.NewGuid():N}.tmp");
-            using (var stream = new FileStream(probe, FileMode.CreateNew, FileAccess.Write, FileShare.None, 1,
-                       FileOptions.DeleteOnClose))
+            using (var stream = new FileStream(probe, FileMode.CreateNew, FileAccess.Write, FileShare.None, 1, FileOptions.DeleteOnClose))
             {
                 stream.WriteByte(1);
             }
@@ -1051,38 +752,6 @@ internal static class Program
         {
             return false;
         }
-    }
-
-    private static void ValidateInstallPathForDelete(string installDir)
-    {
-        if (string.IsNullOrWhiteSpace(installDir))
-            throw new ArgumentException("InstallDir is empty.", nameof(installDir));
-
-        var full = Path.GetFullPath(installDir);
-        var root = Path.GetPathRoot(full);
-        var launcherDir = Path.GetFullPath(AppContext.BaseDirectory).TrimEnd('\\');
-
-        if (string.Equals(full.TrimEnd('\\'), root?.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase))
-            throw new InvalidOperationException($"Небезопасный путь установки: {full}");
-
-        if (full.Length < 8)
-            throw new InvalidOperationException($"Подозрительно короткий путь установки: {full}");
-
-        if (full.TrimEnd('\\').StartsWith(launcherDir, StringComparison.OrdinalIgnoreCase))
-            throw new InvalidOperationException("Каталог установки не должен совпадать с каталогом лаунчера или быть внутри него.");
-    }
-
-    private static string DescribeFuseFailure(int rc, string? err)
-    {
-        var reason = rc switch
-        {
-            FuseLib.E_ARGS => "Неверные аргументы/путь (E_ARGS)",
-            FuseLib.E_IO => "Ошибка ввода-вывода (E_IO)",
-            FuseLib.E_PE => "Ошибка парсинга PE (E_PE)",
-            FuseLib.E_FAIL => "Неизвестная ошибка (E_FAIL)",
-            _ => $"Код {rc}"
-        };
-        return $"{reason}. {err}";
     }
 
     private static string EscapeArgument(string value)
@@ -1103,7 +772,7 @@ internal static class Program
             RedrawHeader();
 
             var state = cfg.AutoUpdateBeforeLaunch ? "включено" : "выключено";
-            var setupDone = IsInitialSetupDoneForSelectedDir(cfg.InstallDir!);
+            var setupDone = CreateOrchestrator().IsInitialSetupDone(cfg.InstallDir!);
             var backupsLimitText = cfg.BackupAutoCleanupLimitMb <= 0
                 ? "выключена"
                 : $"{cfg.BackupAutoCleanupLimitMb} МБ";
@@ -1121,17 +790,17 @@ internal static class Program
                     .WrapAround(true)
                     .AddChoices(new[]
                     {
-                        "✏️ Изменить путь установки",
-                        "↩️ Сбросить путь к стандартному",
-                        "🔁 Переключить auto-update перед запуском",
-                        "🧹 Лимит авто-очистки бэкапов (МБ)",
-                        "◀️ Назад"
+                        "[1] Изменить путь установки",
+                        "[2] Сбросить путь к стандартному",
+                        "[3] Переключить auto-update перед запуском",
+                        "[4] Лимит авто-очистки бэкапов (МБ)",
+                        "[0] Назад"
                     }));
 
-            if (choice == "◀️ Назад")
+            if (choice == "[0] Назад")
                 return;
 
-            if (choice == "✏️ Изменить путь установки")
+            if (choice == "[1] Изменить путь установки")
             {
                 var enteredPath = AnsiConsole.Ask<string>("Введите [cyan]полный путь[/] каталога установки:");
                 if (string.IsNullOrWhiteSpace(enteredPath))
@@ -1151,21 +820,21 @@ internal static class Program
                 continue;
             }
 
-            if (choice == "↩️ Сбросить путь к стандартному")
+            if (choice == "[2] Сбросить путь к стандартному")
             {
                 cfg.InstallDir = GetDefaultInstallDir();
                 AppConfigStore.Save(cfg);
                 continue;
             }
 
-            if (choice == "🔁 Переключить auto-update перед запуском")
+            if (choice == "[3] Переключить auto-update перед запуском")
             {
                 cfg.AutoUpdateBeforeLaunch = !cfg.AutoUpdateBeforeLaunch;
                 AppConfigStore.Save(cfg);
                 continue;
             }
 
-            if (choice == "🧹 Лимит авто-очистки бэкапов (МБ)")
+            if (choice == "[4] Лимит авто-очистки бэкапов (МБ)")
             {
                 var value = AnsiConsole.Ask<int>(
                     "Введите лимит в МБ ([grey]0 — отключить авто-очистку[/]):",
@@ -1184,12 +853,6 @@ internal static class Program
     private static string GetDefaultInstallDir() =>
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "YandexMusic");
 
-    private static void EnsureSevenZip()
-    {
-        if (!File.Exists(SevenZipExe))
-            throw new FileNotFoundException($"7za.exe не найден по пути: {SevenZipExe}");
-    }
-
     private static void PauseAndContinue()
     {
         AnsiConsole.WriteLine();
@@ -1202,23 +865,23 @@ internal static class Program
         Console.Clear();
         var logo = FiggleFonts.Slant.Render("YaMusic Launcher");
         AnsiConsole.Write(new Text(logo, new Style(Color.Green, decoration: Decoration.Bold)));
-        AnsiConsole.MarkupLine($"[bold blue]by m1ndst0rm v{Markup.Escape(LauncherVersion)}[/]");
+        AnsiConsole.MarkupLine($"[bold blue]by m1ndst0rm v{Markup.Escape(AppVersionProvider.DisplayVersion)}[/]");
         AnsiConsole.Write(new Rule("[grey]────────────────────────────────────────[/]").RuleStyle("grey").LeftJustified());
         AnsiConsole.WriteLine();
     }
 
-    private static string FormatBytes(long v)
+    private static string FormatBytes(long value)
     {
         string[] units = { "B", "KB", "MB", "GB" };
-        double x = v;
-        var i = 0;
-        while (x >= 1024 && i < units.Length - 1)
+        double current = value;
+        var index = 0;
+        while (current >= 1024 && index < units.Length - 1)
         {
-            x /= 1024;
-            i++;
+            current /= 1024;
+            index++;
         }
 
-        return $"{x:0.##} {units[i]}";
+        return $"{current:0.##} {units[index]}";
     }
 
     private static void ShowInfoPanel(string title, string body)
@@ -1300,15 +963,12 @@ internal static class Program
         await AnsiConsole.Status()
             .Spinner(Spinner.Known.Star)
             .SpinnerStyle(Style.Parse("cyan"))
-            .StartAsync("Инициализация меню и модулей...", async _ =>
-            {
-                await Task.Delay(450);
-            });
+            .StartAsync("Инициализация меню и модулей...", async _ => { await Task.Delay(450); });
     }
 
     private static void ShowLauncherStateSummary(AppConfig cfg)
     {
-        var setupDone = IsInitialSetupDoneForSelectedDir(cfg.InstallDir!);
+        var setupDone = CreateOrchestrator().IsInitialSetupDone(cfg.InstallDir!);
         var statusColor = setupDone ? "green" : "yellow";
         var statusText = setupDone ? "готово" : "требуется";
         var autoUpdate = cfg.AutoUpdateBeforeLaunch ? "вкл" : "выкл";
@@ -1329,5 +989,22 @@ internal static class Program
             .Expand();
         AnsiConsole.Write(panel);
         AnsiConsole.WriteLine();
+    }
+
+    private static LauncherOrchestrator CreateOrchestrator()
+    {
+        var paths = LauncherPaths.CreateDefault();
+        var locator = new InstalledClientLocator();
+
+        return new LauncherOrchestrator(
+            new LauncherPrerequisites(paths),
+            new ProcessControllerAdapter(),
+            locator,
+            new SpectreClientInstallationService(paths),
+            new SpectreModInstallationService(),
+            new FusePatchService(),
+            new ShortcutProvisioner(paths, locator),
+            new AppConfigPersistence(),
+            new ClientLauncher());
     }
 }

@@ -4,10 +4,15 @@ namespace YaLauncher.Storage;
 
 internal sealed class AppConfig
 {
+    public const string DefaultGitHubOwner = "mindst0rm";
+    public const string DefaultGitHubRepo = "ModYandexClient";
+    internal const string LegacyGitHubOwner = "TheKing-OfTime";
+    internal const string LegacyGitHubRepo = "YandexMusicModClient";
+
     public string? InstallDir { get; set; }
     public bool AutoUpdateBeforeLaunch { get; set; } = true;
-    public string GitHubOwner { get; set; } = "TheKing-OfTime";
-    public string GitHubRepo { get; set; } = "YandexMusicModClient";
+    public string GitHubOwner { get; set; } = DefaultGitHubOwner;
+    public string GitHubRepo { get; set; } = DefaultGitHubRepo;
     public int LaunchTimeoutSeconds { get; set; } = 30;
     public int BackupAutoCleanupLimitMb { get; set; } = 300;
     public bool IsInitialSetupCompleted { get; set; }
@@ -62,10 +67,18 @@ internal static class AppConfigStore
             : cfg.InstallDir.Trim();
 
         if (string.IsNullOrWhiteSpace(cfg.GitHubOwner))
-            cfg.GitHubOwner = "TheKing-OfTime";
+            cfg.GitHubOwner = AppConfig.DefaultGitHubOwner;
 
         if (string.IsNullOrWhiteSpace(cfg.GitHubRepo))
-            cfg.GitHubRepo = "YandexMusicModClient";
+            cfg.GitHubRepo = AppConfig.DefaultGitHubRepo;
+
+        // Migrate historical default source to the current maintained repository.
+        if (string.Equals(cfg.GitHubOwner, AppConfig.LegacyGitHubOwner, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(cfg.GitHubRepo, AppConfig.LegacyGitHubRepo, StringComparison.OrdinalIgnoreCase))
+        {
+            cfg.GitHubOwner = AppConfig.DefaultGitHubOwner;
+            cfg.GitHubRepo = AppConfig.DefaultGitHubRepo;
+        }
 
         if (cfg.LaunchTimeoutSeconds <= 0)
             cfg.LaunchTimeoutSeconds = 30;
